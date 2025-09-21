@@ -30,13 +30,13 @@
         typedef double f64;
         typedef __float128 f128;
     #elif defined(_MSC_VER)
-        // currently I do no Windows development
+        // currently, I do no Windows development
         #define f16 #error "16 bit floats not directly supported by MSVC"; float
         typedef float f32;
         typedef double f64;
         #define f128 #error "128 bit floats not directly supported by MSVC"; float
     #else
-	// What you get with gcc
+	    // What you get with gcc
         typedef _Float16 f16;
         typedef _Float32 f32;
         typedef _Float64 f64;

@@ -4,7 +4,7 @@
 Vpool *longs;
 
 int main(void){
-    longs = vpool_create(64, sizeof(long), NULL);
+    longs = vpool_create(64, sizeof(long), NULL, NULL);
 
     long *a = vpool_alloc(&longs);
     long *b = vpool_alloc(&longs);
@@ -19,6 +19,10 @@ int main(void){
     vpool_dealloc(&longs, (void**) a);
     vpool_dealloc(&longs, (void**) b);
     vpool_dealloc(&longs, (void**) c);
+
+    a = vpool_alloc(&longs);
+    b = vpool_alloc(&longs);
+    c = vpool_alloc(&longs);
 
     vpool_destroy(&longs);
 

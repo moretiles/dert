@@ -4,8 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <pthread.h>
 
-Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functions){
+Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functions, pthread_mutex_t *mutex){
     if(num_items == 0 || elem_size == 0){
         return NULL;
     }
@@ -15,21 +16,27 @@ Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functio
         return NULL;
     }
 
-    vpool_created->items = calloc(num_items, elem_size);
-    if(vpool_created->items == NULL){
+    if(elem_size < sizeof(void*)){
+        elem_size = sizeof(void*);
+    }
+    void **const items = calloc(num_items, elem_size);
+    if(items == NULL){
         free(vpool_created);
         return NULL;
     }
 
-    if(elem_size < sizeof(void*)){
-        elem_size = sizeof(void*);
+    if(mutex == NULL){
+        mutex = calloc(1, sizeof(pthread_mutex_t));
+        if(mutex == NULL){
+            free(items);
+            free(vpool_created);
+            return NULL;
+        }
+        pthread_mutex_init(mutex, NULL);
     }
-    vpool_created->element_size = elem_size;
-    vpool_created->stored = 0;
-    vpool_created->capacity = num_items;
-    vpool_created->next_free = NULL;
-    vpool_created->functions = functions;
-    vpool_created->prev = NULL;
+
+    memcpy(vpool_created, &((Vpool){items, elem_size, 0, num_items, NULL, functions, NULL, mutex}), sizeof(Vpool));
+
     return vpool_created;
 }
 
@@ -43,12 +50,15 @@ void *vpool_alloc(Vpool **pool_ptr){
         return NULL;
     }
 
+    pthread_mutex_lock(pool->mutex);
+
     void *allocated;
     if(pool->next_free != NULL){
         allocated = pool->next_free;
-        memcpy(pool->next_free, allocated, sizeof(void*));
+        memcpy(&(pool->next_free), allocated, sizeof(void*));
+        memset(allocated, 0, pool->element_size);
     } else if(pool->stored == pool->capacity){
-        Vpool *new_pool = vpool_create(pool->capacity * 2, pool->element_size, pool->functions);
+        Vpool *new_pool = vpool_create(pool->capacity * 2, pool->element_size, pool->functions, pool->mutex);
         if(new_pool == NULL){
             return NULL;
         }
@@ -63,6 +73,9 @@ void *vpool_alloc(Vpool **pool_ptr){
     if(pool->functions != NULL && pool->functions->initialize_element != NULL){
         pool->functions->initialize_element(allocated);
     }
+
+    pthread_mutex_unlock(pool->mutex);
+
     return allocated;
 }
 
@@ -76,6 +89,8 @@ int vpool_dealloc(Vpool **pool_ptr, void *elem){
         return 2;
     }
 
+    pthread_mutex_lock(pool->mutex);
+
     if(pool->functions != NULL && pool->functions->deinitialize_element != NULL){
         pool->functions->deinitialize_element(elem);
     }
@@ -85,6 +100,9 @@ int vpool_dealloc(Vpool **pool_ptr, void *elem){
         memcpy(elem, &(pool->next_free), sizeof(void*));
     }
     pool->next_free = elem;
+
+    pthread_mutex_unlock(pool->mutex);
+
     return 0;
 }
 
@@ -101,6 +119,8 @@ int vpool_destroy(Vpool **pool_ptr) {
     if (pool == NULL) {
         return 0;
     }
+
+    pthread_mutex_lock(pool->mutex);
 
     if(pool->functions != NULL && pool->functions->deinitialize_element != NULL){
         // Create array of all currently deallocated pointers from pool and children sorted by pointer magnitude.
@@ -180,17 +200,21 @@ int vpool_destroy(Vpool **pool_ptr) {
         }
     }
 
-    // just free pools->items and pools
+    // call free and NULL out pool_ptr
     {
+        pthread_mutex_t *hold = pool->mutex;
         Vpool *pool_iterate, *prev = NULL;
         for(pool_iterate = pool; pool_iterate != NULL; pool_iterate = prev){
             prev = pool_iterate->prev;
             free(pool_iterate->items);
             free(pool_iterate);
         }
-    }
 
-    *pool_ptr = NULL;
+        *pool_ptr = NULL;
+        pthread_mutex_unlock(hold);
+        pthread_mutex_destroy(hold);
+        free(hold);
+    }
 
     return 0;
 }
