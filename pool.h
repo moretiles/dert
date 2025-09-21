@@ -57,7 +57,7 @@ typedef struct vpool {
  * Create new pool with num_items each of size elem_size, use provided functions.
  * Non-null pointer returned on success.
  */
-Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functions, pthread_mutex_t *mutex);
+Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functions);
 
 /*
  * Obtain new allocation from pool.
