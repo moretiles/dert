@@ -39,6 +39,10 @@ Vpool *_vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functi
         pthread_mutex_init(mutex, NULL);
     }
 
+    /*
+     * Use memcpy because struct vpool has const members. Strange but works.
+     * If gcc/clang get better at identifying const access may need to make changes.
+     */
     memcpy(vpool_created, &((Vpool){items, elem_size, 0, num_items, NULL, functions, prev, mutex}), sizeof(Vpool));
 
     return vpool_created;
@@ -58,12 +62,14 @@ void *_vpool_alloc(Vpool **pool_ptr, bool already_holding_mutex){
         return NULL;
     }
 
+    // avoid locking twice when _vpool_alloc called recursively
     if(!already_holding_mutex){
         pthread_mutex_lock(pool->mutex);
     }
 
     void *allocated;
     if(pool->next_free != NULL){
+        // pool->next_free is the top of a stack of allocated but not in-use elements
         allocated = pool->next_free;
         memcpy(&(pool->next_free), allocated, sizeof(void*));
         memset(allocated, 0, pool->element_size);
@@ -84,6 +90,7 @@ void *_vpool_alloc(Vpool **pool_ptr, bool already_holding_mutex){
         pool->functions->initialize_element(allocated);
     }
 
+    // avoid unlocking early/twice when _vpool_alloc called recursively
     if(!already_holding_mutex){
         pthread_mutex_unlock(pool->mutex);
     }
@@ -108,6 +115,7 @@ int vpool_dealloc(Vpool **pool_ptr, void *elem){
     }
     memset(elem, 0, sizeof(void*));
 
+    // pool->next_free is the top of a stack of allocated but not in-use elements
     if(pool->next_free != NULL){
         memcpy(elem, &(pool->next_free), sizeof(void*));
     }
@@ -234,6 +242,7 @@ int vpool_destroy(Vpool **pool_ptr) {
 
     return 0;
 }
+
 
 int compare_pointers(const void *a, const void *b) {
     if(a == b){
