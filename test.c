@@ -1,9 +1,9 @@
 #include "assert.h"
-#include "pool.h"
-#include <stdlib.h>
+#include "vpool.h"
+#include "vdll.h"
 
-Vpool_functions long_functions;
-Vpool *longs;
+#include <stdlib.h>
+#include <time.h>
 
 int init_long(void *ptr){
     if(ptr == NULL){
@@ -25,7 +25,10 @@ int deinit_long(void *ptr){
     return 0;
 }
 
-int main(void){
+int vpool_test(void){
+    Vpool_functions long_functions;
+    Vpool *longs;
+
     long_functions.initialize_element = init_long;
     long_functions.deinitialize_element = deinit_long;
     longs = vpool_create(2, sizeof(long), &long_functions);
@@ -54,4 +57,39 @@ int main(void){
     vpool_destroy(&longs);
 
     return 0;
+}
+
+
+int vdll_test(){
+    srand(time(NULL));
+
+    #define TEST_VDLL_ARRAY_LEN (99)
+    Vdll *dll = vdll_init(sizeof(int), NULL);
+    assert(dll != NULL);
+    assert(vdll_grow(dll, TEST_VDLL_ARRAY_LEN) == 0);
+
+    int array[TEST_VDLL_ARRAY_LEN];
+    int tmp;
+    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 10; i++){
+        size_t pos = rand() % TEST_VDLL_ARRAY_LEN;
+        array[pos] = (int) rand();
+        assert(vdll_set(dll, pos, &(array[pos])) == 0);
+    }
+
+    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 100; i++){
+        size_t pos = rand() % TEST_VDLL_ARRAY_LEN;
+        assert(vdll_get(dll, pos, &tmp) == 0);
+        assert(tmp == array[pos]);
+    }
+
+    assert(vdll_len(dll) == TEST_VDLL_ARRAY_LEN);
+    assert(vdll_shrink(dll, TEST_VDLL_ARRAY_LEN) == 0);
+    assert(vdll_destroy(dll) == 0);
+
+    return 0;
+}
+
+int main(){
+    vpool_test();
+    vdll_test();
 }

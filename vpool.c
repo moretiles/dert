@@ -1,5 +1,5 @@
-#include "pool.h"
-#include "pool_priv.h"
+#include "vpool.h"
+#include "vpool_priv.h"
 
 #include <stdlib.h>
 #include <string.h>
