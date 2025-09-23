@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-Vdll_node *vdll_node_init(size_t elem_size){
+Vdll_node *vdll_node_init(size_t elem_size, int (*init)(void *arg)){
 	if(elem_size == 0){
 		return NULL;
 	}
@@ -16,15 +16,22 @@ Vdll_node *vdll_node_init(size_t elem_size){
 	}
 
 	ret->data = (((void*) ret) + sizeof(Vdll_node));
+    memset(ret->data, 0, elem_size);
+    if(init != NULL){
+        init(ret->data);
+    }
+
 	ret->prev = NULL;
 	ret->next = NULL;
 	return ret;
 }
 
-int vdll_node_destroy(Vdll_node *node){
+int vdll_node_destroy(Vdll_node *node, size_t elem_size, int (*deinit)(void *arg)){
 	if(node != NULL){
-		// memfill here just in case there is dangling pointer
-		memset(node, 0, sizeof(Vdll_node));
+        if(deinit != NULL){
+            deinit(node->data);
+        }
+        memset(node, 0, sizeof(Vdll_node) + elem_size);
 		free(node);
 	}
 
@@ -174,7 +181,12 @@ int vdll_insert(Vdll *dll, size_t pos, size_t num_elems){
 	}
 
 	for(size_t i = 0; i < num_elems; i++){
-		Vdll_node *new = vdll_node_init(dll->elem_size);
+        int (*init)(void *arg) = NULL;
+        if(dll->functions != NULL && dll->functions->init != NULL){
+            init = dll->functions->init;
+        }
+        Vdll_node *new = vdll_node_init(dll->elem_size, init);
+
 		if(new == NULL){
 			if(i > 1){
 				// deallocate everything added prior to failure
@@ -219,7 +231,12 @@ int vdll_delete(Vdll *dll, size_t pos, size_t num_elems){
 		prev = current->prev;
 		next = current->next;
 
-		vdll_node_destroy(current);
+        int (*deinit)(void *arg) = NULL;
+        if(dll->functions != NULL && dll->functions->deinit != NULL){
+            deinit = dll->functions->deinit;
+        }
+        vdll_node_destroy(current, dll->elem_size, deinit);
+
 		if(prev == NULL && next == NULL){
 			dll->ptr = NULL;
 		} else if(prev == NULL){
@@ -234,8 +251,13 @@ int vdll_delete(Vdll *dll, size_t pos, size_t num_elems){
 			dll->ptr = prev;
 		}
 
-		dll->pos--;
-		dll->cap--;
+        if(dll->pos != 0){
+		    dll->pos--;
+        }
+
+        if(dll->cap != 0){
+		    dll->cap--;
+        }
 	}
 
 	return 0;

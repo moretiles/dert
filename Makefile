@@ -32,6 +32,7 @@ clean:
 
 
 ## tests and housekeeping
+.PHONY: test
 test:
 	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vdll.c vpool.c test.c -o test
 

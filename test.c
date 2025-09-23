@@ -59,20 +59,20 @@ int vpool_test(void){
     return 0;
 }
 
-
 int vdll_test(){
     srand(time(NULL));
 
+    Vdll_functions functions = { .init = init_long, .deinit = deinit_long };
     #define TEST_VDLL_ARRAY_LEN (99)
-    Vdll *dll = vdll_init(sizeof(int), NULL);
+    Vdll *dll = vdll_init(sizeof(long), &functions);
     assert(dll != NULL);
     assert(vdll_grow(dll, TEST_VDLL_ARRAY_LEN) == 0);
 
-    int array[TEST_VDLL_ARRAY_LEN];
-    int tmp;
+    long array[TEST_VDLL_ARRAY_LEN];
+    long tmp;
     for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 10; i++){
         size_t pos = rand() % TEST_VDLL_ARRAY_LEN;
-        array[pos] = (int) rand();
+        array[pos] = rand();
         assert(vdll_set(dll, pos, &(array[pos])) == 0);
     }
 
@@ -83,7 +83,7 @@ int vdll_test(){
     }
 
     assert(vdll_len(dll) == TEST_VDLL_ARRAY_LEN);
-    assert(vdll_shrink(dll, TEST_VDLL_ARRAY_LEN) == 0);
+    assert(vdll_shrink(dll, 1 + (TEST_VDLL_ARRAY_LEN / 2)) == 0);
     assert(vdll_destroy(dll) == 0);
 
     return 0;
