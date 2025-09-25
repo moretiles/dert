@@ -1,6 +1,7 @@
 #include "assert.h"
 #include "vpool.h"
 #include "vdll.h"
+#include "varray.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -89,7 +90,40 @@ int vdll_test(){
     return 0;
 }
 
+int varray_test(){
+    srand(time(NULL));
+
+    Varray *array = varray_init(sizeof(long));
+    assert(array != NULL);
+    assert(varray_grow(&array, 4) == 0);
+    assert(varray_grow(&array, 12) == 0);
+
+    long a = 1, b = 2, c = 3;
+    assert(varray_set(&array, 0, &a) == 0);
+    assert(varray_set(&array, 1, &b) == 0);
+    assert(varray_set(&array, 2, &c) == 0);
+
+    long *a_ptr, *b_ptr, *c_ptr;
+    a_ptr = varray_get(&array, 0);
+    b_ptr = varray_get(&array, 1);
+    c_ptr = varray_get(&array, 2);
+
+    assert(a_ptr != NULL);
+    assert(b_ptr != NULL);
+    assert(c_ptr != NULL);
+
+    assert(*a_ptr == a);
+    assert(*b_ptr == b);
+    assert(*c_ptr == c);
+
+    assert(varray_shrink(&array, 8) == 0);
+    assert(varray_destroy(&array) == 0);
+
+    return 0;
+}
+
 int main(){
     vpool_test();
     vdll_test();
+    varray_test();
 }

@@ -10,7 +10,7 @@ ANALYZE_CLANG=-analyze-headers
 # If you want to actually use this library run `make all`             #
 #                                                                     #
 #######################################################################
-all: cstring.o vdll.o vpool.o
+all: cstring.o vdll.o vpool.o varray.o
 
 
 
@@ -21,6 +21,9 @@ cstring.o: cstring.c cstring.h
 
 vdll.o: vdll.c vdll.h
 	${CC} ${CFLAGS} ${OPTIMIZE} vdll.c -c -o vdll.o
+
+varray.o: varray.c varray.h
+	${CC} ${CFLAGS} ${OPTIMIZE} varray.c -c -o varray.o
 
 vpool.o: vpool.c vpool.h
 	${CC} ${CFLAGS} ${OPTIMIZE} vpool.c -c -o vpool.o
@@ -34,7 +37,7 @@ clean:
 ## tests and housekeeping
 .PHONY: test
 test:
-	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vdll.c vpool.c test.c -o test
+	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vdll.c varray.c vpool.c test.c -o test
 
 .PHONY: tags
 tags:
