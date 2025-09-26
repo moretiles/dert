@@ -1,4 +1,5 @@
 #include "varray.h"
+#include "pointerarith.h"
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -56,7 +57,8 @@ void *varray_get(Varray **array_ptr, size_t pos){
         return NULL;
     }
 
-    return array->contents + (pos * array->elem_size);
+    // pointer addition in this case scales by 1
+    return pointer_literal_addition(array->contents, pos * array->elem_size);
 }
 
 int varray_set(Varray **array_ptr, size_t pos, void *src){
@@ -85,27 +87,31 @@ int varray_grow(Varray **array_ptr, size_t increase){
         return 2;
     }
 
+    if(increase == 0){
+        return 3;
+    }
+
     if(array->contents == NULL){
         array->contents = calloc(increase, array->elem_size);
         if(array->contents == NULL){
-            return 3;
+            return 4;
         }
 
         array->stored += increase;
         array->cap += increase;
     } else {
-        size_t new_cap = (array->cap << 1) | 0x1;
+        size_t new_cap = (array->cap << 1);
         while(new_cap < (array->cap + increase)){
             new_cap <<= 1;
         }
 
         void *new_contents = calloc(new_cap, array->elem_size);
         if(new_contents == NULL){
-            return 4;
+            return 5;
         }
 
         if(memcpy(new_contents, array->contents, array->cap * array->elem_size) != new_contents){
-            return 5;
+            return 6;
         }
         free(array->contents);
         array->contents = new_contents;
@@ -128,13 +134,17 @@ int varray_shrink(Varray **array_ptr, size_t decrease){
         return 2;
     }
 
-    if(array->cap < decrease){
+    if(decrease == 0){
         return 3;
+    }
+
+    if(array->cap < decrease){
+        return 4;
     }
 
     void *dest = realloc(array->contents, (array->cap - decrease) * array->elem_size);
     if(dest == NULL){
-        return 4;
+        return 5;
     }
     array->contents = dest;
     array->cap -= decrease;
@@ -143,4 +153,20 @@ int varray_shrink(Varray **array_ptr, size_t decrease){
     }
 
     return 0;
+}
+
+size_t varray_len(Varray *array){
+    if(array == NULL){
+        return 0;
+    }
+
+    return array->stored;
+}
+
+size_t varray_cap(Varray *array){
+    if(array == NULL){
+        return 0;
+    }
+
+    return array->cap;
 }

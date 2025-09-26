@@ -1,5 +1,6 @@
 #include "vdll.h"
 #include "vdll_priv.h"
+#include "pointerarith.h"
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -15,7 +16,8 @@ Vdll_node *vdll_node_init(size_t elem_size, int (*init)(void *arg)){
 		return NULL;
 	}
 
-	ret->data = (((void*) ret) + sizeof(Vdll_node));
+	// pointer addition in this case scales by 1
+	ret->data = pointer_literal_addition(ret, sizeof(Vdll_node));
     memset(ret->data, 0, elem_size);
     if(init != NULL){
         init(ret->data);
