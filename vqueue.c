@@ -168,3 +168,19 @@ void *vqueue_back(Vqueue **queue_ptr){
     }
     return back;
 }
+
+size_t vqueue_len(Vqueue *queue){
+    if(queue == NULL){
+        return 0;
+    }
+
+    return queue->back - queue->front;
+}
+
+size_t vqueue_cap(Vqueue *queue){
+    if(queue == NULL){
+        return 0;
+    }
+
+    return queue->cap;
+}

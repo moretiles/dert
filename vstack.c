@@ -116,3 +116,19 @@ void *vstack_top(Vstack **stack_ptr){
     }
     return top;
 }
+
+size_t vstack_len(Vstack *stack){
+    if(stack == NULL){
+        return 0;
+    }
+
+    return stack->stored;
+}
+
+size_t vstack_cap(Vstack *stack){
+    if(stack == NULL){
+        return 0;
+    }
+
+    return stack->cap;
+}

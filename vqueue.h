@@ -24,3 +24,6 @@ void *vqueue_dequeue(Vqueue **queue_ptr);
 
 void *vqueue_front(Vqueue **queue_ptr);
 void *vqueue_back(Vqueue **queue_ptr);
+
+size_t vqueue_len(Vqueue *queue);
+size_t vqueue_cap(Vqueue *queue);

@@ -19,7 +19,7 @@ clean:
 
 
 ## individual recipes
-libdert.a: vstack.o vqueue.o vdll.o vpool.o varray.o cstring.o pointerarith.o
+libdert.a: vstack.o vqueue.o vdll.o vpool.o varray.o vht.o cstring.o pointerarith.o
 	ar rcs libdert.a *.o
 
 vstack.o: vstack.c vstack.h
@@ -34,6 +34,9 @@ vdll.o: vdll.c vdll.h
 varray.o: varray.c varray.h
 	${CC} ${OPTIMIZE} ${CFLAGS} varray.c -c -o varray.o
 
+vht.o: vht.c vht.h
+	${CC} ${OPTIMIZE} ${CFLAGS} vht.c -c -o vht.o
+
 vpool.o: vpool.c vpool.h
 	${CC} ${OPTIMIZE} ${CFLAGS} vpool.c -c -o vpool.o
 
@@ -47,7 +50,7 @@ pointerarith.o: pointerarith.c pointerarith.h
 ## tests and housekeeping
 .PHONY: test
 test:
-	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vstack.c vqueue.c vdll.c varray.c vpool.c test.c pointerarith.c -o test
+	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vstack.c vqueue.c vdll.c varray.c vpool.c vht.c test.c pointerarith.c -o test
 
 .PHONY: tags
 tags:

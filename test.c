@@ -4,6 +4,7 @@
 #include "varray.h"
 #include "vstack.h"
 #include "vqueue.h"
+#include "vht.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -133,11 +134,15 @@ int vstack_test(void){
 
     Vstack *stack = vstack_init(sizeof(long), 3);
     assert(stack != NULL);
+    assert(vstack_len(stack) == 0);
+    assert(vstack_cap(stack) == 3);
 
     long a = 1, b = 2, c = 3;
     assert(vstack_push(&stack, &a) == 0);
     assert(vstack_push(&stack, &b) == 0);
     assert(vstack_push(&stack, &c) == 0);
+    assert(vstack_len(stack) == 3);
+    assert(vstack_cap(stack) == 3);
 
     long *a_ptr, *b_ptr, *c_ptr;
     c_ptr = vstack_top(&stack);
@@ -153,6 +158,8 @@ int vstack_test(void){
     assert(c_ptr != NULL);
     assert(*c_ptr == c);
 
+    assert(vstack_len(stack) == 0);
+    assert(vstack_cap(stack) == 3);
     assert(vstack_destroy(&stack) == 0);
     
     return 0;
@@ -163,11 +170,15 @@ int vqueue_test_nooverwrite(void){
 
     Vqueue *queue = vqueue_init(sizeof(long), 3);
     assert(queue != NULL);
+    assert(vqueue_len(queue) == 0);
+    assert(vqueue_cap(queue) == 3);
 
     long a = 1, b = 2, c = 3;
     assert(vqueue_enqueue(&queue, &a, false) == 0);
     assert(vqueue_enqueue(&queue, &b, false) == 0);
     assert(vqueue_enqueue(&queue, &c, false) == 0);
+    assert(vqueue_len(queue) == 3);
+    assert(vqueue_cap(queue) == 3);
 
     long *a_ptr, *b_ptr, *c_ptr;
     a_ptr = vqueue_front(&queue);
@@ -186,6 +197,8 @@ int vqueue_test_nooverwrite(void){
     assert(c_ptr != NULL);
     assert(*c_ptr == c);
 
+    assert(vqueue_len(queue) == 0);
+    assert(vqueue_cap(queue) == 3);
     assert(vqueue_destroy(&queue) == 0);
     
     return 0;
@@ -196,12 +209,16 @@ int vqueue_test_overwrite(void){
 
     Vqueue *queue = vqueue_init(sizeof(long), 3);
     assert(queue != NULL);
+    assert(vqueue_len(queue) == 0);
+    assert(vqueue_cap(queue) == 3);
 
     long a = 1, b = 2, c = 3, d = 4;
     assert(vqueue_enqueue(&queue, &a, true) == 0);
     assert(vqueue_enqueue(&queue, &b, true) == 0);
     assert(vqueue_enqueue(&queue, &c, true) == 0);
     assert(vqueue_enqueue(&queue, &d, true) == 0);
+    assert(vqueue_len(queue) == 3);
+    assert(vqueue_cap(queue) == 3);
 
     long *b_ptr, *c_ptr, *d_ptr;
     b_ptr = vqueue_front(&queue);
@@ -216,10 +233,14 @@ int vqueue_test_overwrite(void){
     assert(*b_ptr == b);
     assert(c_ptr != NULL);
     assert(*c_ptr == c);
+    assert(vqueue_len(queue) == 1);
+    assert(vqueue_cap(queue) == 3);
 
     long e = 5, f = 6;
     assert(vqueue_enqueue(&queue, &e, true) == 0);
     assert(vqueue_enqueue(&queue, &f, true) == 0);
+    assert(vqueue_len(queue) == 3);
+    assert(vqueue_cap(queue) == 3);
 
     long *e_ptr, *f_ptr;
     d_ptr = vqueue_front(&queue);
@@ -238,8 +259,42 @@ int vqueue_test_overwrite(void){
     assert(f_ptr != NULL);
     assert(*f_ptr == f);
 
+    assert(vqueue_len(queue) == 0);
+    assert(vqueue_cap(queue) == 3);
     assert(vqueue_destroy(&queue) == 0);
     
+    return 0;
+}
+
+int vht_test(void){
+    srand(time(NULL));
+
+    Vht *table = vht_init(sizeof(long), sizeof(char));
+    assert(table != NULL);
+    assert(vht_len(table) == 0);
+
+    long keys[257];
+    char vals[257];
+    char *ptrs[257];
+    size_t i;
+    for(i = 0; i < 257; i++){
+        keys[i] = rand();
+        vals[i] = rand();
+    }
+    assert(vht_get(table, &(keys[0])) == NULL);
+
+    for(i = 0; i < 257; i++){
+        assert(vht_set(&table, &(keys[i]), &(vals[i])) == 0);
+    }
+    assert(vht_len(table) == 257);
+
+    for(i = 0; i < 257; i++){
+        ptrs[i] = vht_get(table, &(keys[i]));
+        assert(ptrs[i] != NULL);
+        assert(*(ptrs[i]) == vals[i]);
+    }
+
+    assert(vht_destroy(table) == 0);
     return 0;
 }
 
@@ -250,4 +305,5 @@ int main(void){
     vstack_test();
     vqueue_test_nooverwrite();
     vqueue_test_overwrite();
+    vht_test();
 }
