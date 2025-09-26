@@ -16,3 +16,6 @@ int vstack_push(Vstack **stack_ptr, void *elem);
 void *vstack_pop(Vstack **stack_ptr);
 
 void *vstack_top(Vstack **stack_ptr);
+
+size_t vstack_len(Vstack *stack_ptr);
+size_t vstack_cap(Vstack *stack_ptr);
