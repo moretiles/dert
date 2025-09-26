@@ -3,8 +3,16 @@
 # Data structures that function for all types
 * Pool allocator.
 * Doubly linked list.
+* Dynamic Length Array.
+* Stack.
+* Queue.
+* Ring Buffer (Queue data structure with overwrite enabled).
+* TODO:
+* Hashmap -- build using two parallel varray.
+* File Buffered Queue -- Already exists, organize.
 
 # Random
+* Good version of cstrncpy.
 * Short, portable names for fixed width signed integers, unsigned integers, and reals.
 * Assert macro to make debugging with assert statements easier for Clang and MSVC.
-* Good version of cstrncpy.
+* Function for literal addition on top of pointer.

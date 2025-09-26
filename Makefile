@@ -1,6 +1,6 @@
-CFLAGS=-Wall -Wextra --std=c11
+CFLAGS=-Wall -Wextra -Wpedantic --std=c11 -fwrapv
 DEBUG=-g3 -ggdb
-OPTIMIZE=-O3
+OPTIMIZE=
 
 ANALYZE_GCC=-fanalyzer
 ANALYZE_CLANG=-analyze-headers
@@ -10,20 +10,7 @@ ANALYZE_CLANG=-analyze-headers
 # If you want to actually use this library run `make all`             #
 #                                                                     #
 #######################################################################
-all: cstring.o vdll.o vpool.o
-
-
-
-
-## individual recipes
-cstring.o: cstring.c cstring.h
-	${CC} ${CFLAGS} ${OPTIMIZE} cstring.c -c -o cstring.o
-
-vdll.o: vdll.c vdll.h
-	${CC} ${CFLAGS} ${OPTIMIZE} vdll.c -c -o vdll.o
-
-vpool.o: vpool.c vpool.h
-	${CC} ${CFLAGS} ${OPTIMIZE} vpool.c -c -o vpool.o
+all: libdert.a
 
 clean:
 	rm -f test tags *.ast *.pch *.plist *.o externalDefMap.txt gmon.out
@@ -31,10 +18,36 @@ clean:
 
 
 
+## individual recipes
+libdert.a: vstack.o vqueue.o vdll.o vpool.o varray.o cstring.o pointerarith.o
+	ar rcs libdert.a *.o
+
+vstack.o: vstack.c vstack.h
+	${CC} ${OPTIMIZE} ${CFLAGS} vstack.c -c -o vstack.o
+
+vqueue.o: vqueue.c vqueue.h
+	${CC} ${OPTIMIZE} ${CFLAGS} vqueue.c -c -o vqueue.o
+
+vdll.o: vdll.c vdll.h
+	${CC} ${OPTIMIZE} ${CFLAGS} vdll.c -c -o vdll.o
+
+varray.o: varray.c varray.h
+	${CC} ${OPTIMIZE} ${CFLAGS} varray.c -c -o varray.o
+
+vpool.o: vpool.c vpool.h
+	${CC} ${OPTIMIZE} ${CFLAGS} vpool.c -c -o vpool.o
+
+cstring.o: cstring.c cstring.h
+	${CC} ${OPTIMIZE} ${CFLAGS} cstring.c -c -o cstring.o
+
+pointerarith.o: pointerarith.c pointerarith.h
+	${CC} ${OPTIMIZE} ${CFLAGS} pointerarith.c -c -o pointerarith.o
+
+
 ## tests and housekeeping
 .PHONY: test
 test:
-	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vdll.c vpool.c test.c -o test
+	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vstack.c vqueue.c vdll.c varray.c vpool.c test.c pointerarith.c -o test
 
 .PHONY: tags
 tags:

@@ -1,5 +1,6 @@
 #include "vpool.h"
 #include "vpool_priv.h"
+#include "pointerarith.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -82,7 +83,8 @@ void *_vpool_alloc(Vpool **pool_ptr, bool already_holding_mutex){
         *pool_ptr = new_pool;
         allocated = _vpool_alloc(pool_ptr, true);
     } else {
-        allocated = ((void*) pool->items) + (pool->stored * pool->element_size);
+        // pointer addition in this case scales by 1
+        allocated = pointer_literal_addition(pool->items, pool->stored * pool->element_size);
         pool->stored++;
     }
 
