@@ -2,28 +2,69 @@
 #include <stdbool.h>
 
 typedef struct vqueue {
-    // a little of bit of pointer arithmetic trickery
-    //void *contents
+    void *elems;
 
     size_t elem_size;
 
-    // front
+    // front_pos
     size_t front;
 
-    // back
+    // back_pos
     size_t back;
 
     size_t cap;
 } Vqueue;
 
-Vqueue *vqueue_init(size_t elem_size, size_t num_elems);
-int vqueue_destroy(Vqueue **queue_ptr);
+// Allocates memory for and initializes a Vqueue.
+Vqueue *vqueue_create(size_t elem_size, size_t num_elems);
 
-int vqueue_enqueue(Vqueue **queue_ptr, void *elem, bool overwrite);
-void *vqueue_dequeue(Vqueue **queue_ptr);
+// Initializes a Vqueue.
+int vqueue_init(Vqueue *queue, size_t elem_size, size_t num_elems);
 
-void *vqueue_front(Vqueue **queue_ptr);
-void *vqueue_back(Vqueue **queue_ptr);
+// Deinitializes a Vqueue>
+void vqueue_deinit(Vqueue *queue);
 
+/*
+ * Destroys a Vqueue that was allocated by vqueue_create.
+ * Please, only use with memory allocated by vqueue_create!
+ */
+void vqueue_destroy(Vqueue *queue);
+
+// Enqueues contents of src into queue.
+int vqueue_enqueue(Vqueue *queue, void *src, bool overwrite);
+
+// Dequeues front element of queue into dest.
+int vqueue_dequeue(Vqueue *queue, void *dest);
+
+// Gets the contents of the front of the queue.
+int vqueue_front(Vqueue *queue, void *dest);
+
+/*
+ * Gets the memory address of the element in the front of the queue.
+ * Should be used rarely as further enqeue/dequeue operations can overwrite this memory.
+ * Thus, storing the pointer returned from this across operations almost always introduces a bug!
+ */
+void *vqueue_front_direct(Vqueue *queue);
+
+// Gets the contents of the back of the queue.
+int vqueue_back(Vqueue *queue, void *dest);
+
+/*
+ * Gets the memory address of the element in the back of the queue.
+ * Should be used rarely as further enqeue/dequeue operations can overwrite this memory.
+ * Thus, storing the pointer returned from this across operations almost always introduces a bug!
+ */
+void *vqueue_back_direct(Vqueue *queue);
+
+/*
+ * Returns current length of the queue.
+ * Calculated as number of elements currently enqueued.
+ * Decreases when elements are dequeued.
+ */
 size_t vqueue_len(Vqueue *queue);
+
+/*
+ * Returns the total number of elements that can be enqueued without overwriting anything if the queue is empty.
+ * Calculated as number of elements the queue was told to allocate when creating/initializing.
+ */
 size_t vqueue_cap(Vqueue *queue);

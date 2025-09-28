@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <uchar.h>
 
 // Shorten type names
 #ifndef SHORT_NUMERIC_NAMES
@@ -42,4 +43,10 @@
         typedef _Float64 f64;
         typedef _Float128 f128;
     #endif
+#endif
+
+#ifndef SHORT_CHAR_NAMES
+    typedef char c8;
+    typedef char16_t c16;
+    typedef char32_t c32;
 #endif

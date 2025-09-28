@@ -15,66 +15,75 @@ size_t vqueue_wrap(Vqueue *queue, size_t pos){
     return pos % queue->cap;
 }
 
-Vqueue *vqueue_init(size_t elem_size, size_t num_elems){
+Vqueue *vqueue_create(size_t elem_size, size_t num_elems){
     Vqueue *ret;
 
     if(elem_size == 0 || num_elems == 0){
         return NULL;
     }
 
-    ret = calloc(1, sizeof(Vqueue) + (elem_size * num_elems));
+    ret = calloc(1, sizeof(Vqueue));
     if(ret == NULL){
         return NULL;
     }
 
-    ret->elem_size = elem_size;
-    ret->front = 0;
-    ret->back = 0;
-    ret->cap = num_elems;
+    if(vqueue_init(ret, elem_size, num_elems) != 0){
+        free(ret);
+        return NULL;
+    }
     return ret;
 }
 
-int vqueue_destroy(Vqueue **queue_ptr){
-    Vqueue *queue;
-    if(queue_ptr == NULL){
+int vqueue_init(Vqueue *queue, size_t elem_size, size_t num_elems){
+    if(queue == NULL || elem_size == 0 || num_elems == 0){
         return 1;
     }
 
-    queue = *queue_ptr;
-    if(queue == NULL){
+    queue->elems = calloc(num_elems, elem_size);
+    if(queue->elems == NULL){
         return 2;
     }
 
-    // pop while not empty
-    while(vqueue_front(&queue) != NULL){
-        if(vqueue_dequeue(&queue) == NULL){
-            return 3;
-        }
-    }
-
-    free(queue);
+    queue->elem_size = elem_size;
+    queue->front = 0;
+    queue->back = 0;
+    queue->cap = num_elems;
     return 0;
 }
 
-int vqueue_enqueue(Vqueue **queue_ptr, void *elem, bool overwrite){
-    Vqueue *queue;
+void vqueue_deinit(Vqueue *queue){
+    if(queue == NULL || queue->elems == NULL){
+        return;
+    }
+
+    free(queue->elems);
+    memset(queue, 0, sizeof(Vqueue));
+    return;
+}
+
+void vqueue_destroy(Vqueue *queue){
+    if(queue == NULL){
+        return;
+    }
+
+    vqueue_deinit(queue);
+    free(queue);
+    return;
+}
+
+int vqueue_enqueue(Vqueue *queue, void *src, bool overwrite){
     void *enqueued;
-    if(queue_ptr == NULL || elem == NULL){
+    if(queue == NULL || src == NULL){
         return 1;
     }
 
-    queue = *queue_ptr;
-    if(queue == NULL){
-        return 2;
-    }
-    
     // check if full
     if(!overwrite && !(queue->front == queue->back && queue->front == 0 && queue->back == 0) && vqueue_wrap(queue, queue->front) == vqueue_wrap(queue, queue->back)){
         return 3;
     }
 
-    enqueued = pointer_literal_addition(queue, sizeof(Vqueue) + (queue->elem_size * vqueue_wrap(queue, queue->back)));
-    if(memcpy(enqueued, elem, queue->elem_size) != enqueued){
+    enqueued = pointer_literal_addition(queue->elems, queue->elem_size * vqueue_wrap(queue, queue->back));
+    if(memcpy(enqueued, src, queue->elem_size) != enqueued){
         return 4;
     }
     queue->back++;
@@ -90,21 +99,13 @@ int vqueue_enqueue(Vqueue **queue_ptr, void *elem, bool overwrite){
     return 0;
 }
 
-void *vqueue_dequeue(Vqueue **queue_ptr){
-    Vqueue *queue;
-    void *dequeued;
-    if(queue_ptr == NULL){
-        return NULL;
-    }
-
-    queue = *queue_ptr;
+int vqueue_dequeue(Vqueue *queue, void *dest){
     if(queue == NULL){
-        return NULL;
+        return 0;
     }
 
-    dequeued = vqueue_front(queue_ptr);
-    if(dequeued == NULL){
-        return NULL;
+    if(vqueue_front(queue, dest) != 0){
+        return 1;
     }
     queue->front++;
 
@@ -118,41 +119,32 @@ void *vqueue_dequeue(Vqueue **queue_ptr){
         queue->back = 0;
     }
 
-    return dequeued;
+    return 0;
 }
 
-void *vqueue_front(Vqueue **queue_ptr){
-    Vqueue *queue;
+int vqueue_front(Vqueue *queue, void *dest){
     void *front;
-    if(queue_ptr == NULL){
-        return NULL;
-    }
 
-    queue = *queue_ptr;
     if(queue == NULL){
-        return NULL;
+        return 1;
     }
 
     //if(vqueue_wrap(queue, queue->front) == vqueue_wrap(queue, queue->back)){
     if(queue->back == 0){
-        return NULL;
+        return 2;
     }
 
-    front = pointer_literal_addition(queue, sizeof(Vqueue) + (queue->elem_size * vqueue_wrap(queue, queue->front)));
+    front = vqueue_front_direct(queue);
     if(front == NULL){
-        return NULL;
+        return 3;
     }
-    return front;
+    if(memcpy(dest, front, queue->elem_size) != dest){
+        return 4;
+    }
+    return 0;
 }
 
-void *vqueue_back(Vqueue **queue_ptr){
-    Vqueue *queue;
-    void *back;
-    if(queue_ptr == NULL){
-        return NULL;
-    }
-
-    queue = *queue_ptr;
+void *vqueue_front_direct(Vqueue *queue){
     if(queue == NULL){
         return NULL;
     }
@@ -162,11 +154,42 @@ void *vqueue_back(Vqueue **queue_ptr){
         return NULL;
     }
 
-    back = pointer_literal_addition(queue, sizeof(Vqueue) + (queue->elem_size * vqueue_wrap(queue, queue->back - 1)));
+    return pointer_literal_addition(queue->elems, queue->elem_size * vqueue_wrap(queue, queue->front));
+}
+
+int vqueue_back(Vqueue *queue, void *dest){
+    void *back;
+
+    if(queue == NULL){
+        return 1;
+    }
+
+    //if(vqueue_wrap(queue, queue->front) == vqueue_wrap(queue, queue->back)){
+    if(queue->back == 0){
+        return 2;
+    }
+
+    back = vqueue_back_direct(queue);
     if(back == NULL){
+        return 3;
+    }
+    if(memcpy(dest, back, queue->elem_size) != dest){
+        return 4;
+    }
+    return 0;
+}
+
+void *vqueue_back_direct(Vqueue *queue){
+    if(queue == NULL){
         return NULL;
     }
-    return back;
+
+    //if(vqueue_wrap(queue, queue->front) == vqueue_wrap(queue, queue->back)){
+    if(queue->back == 0){
+        return NULL;
+    }
+
+    return pointer_literal_addition(queue->elems, queue->elem_size * vqueue_wrap(queue, queue->back - 1));
 }
 
 size_t vqueue_len(Vqueue *queue){

@@ -2,20 +2,51 @@
 #include <stdbool.h>
 
 typedef struct vstack {
-    // a little of bit of pointer arithmetic trickery
-    //void *contents
+    void *elems;
     size_t elem_size;
     size_t stored;
     size_t cap;
 } Vstack;
 
-Vstack *vstack_init(size_t elem_size, size_t num_elems);
-int vstack_destroy(Vstack **stack_ptr);
+// Allocates memory for and initializes a Vstack.
+Vstack *vstack_create(size_t elem_size, size_t num_elems);
 
-int vstack_push(Vstack **stack_ptr, void *elem);
-void *vstack_pop(Vstack **stack_ptr);
+// Initializes a Vstack.
+int vstack_init(Vstack *stack, size_t elem_size, size_t num_elems);
 
-void *vstack_top(Vstack **stack_ptr);
+// Deinitializes a Vstack.
+int vstack_deinit(Vstack *stack);
 
+/*
+ * Destroys a Vstack that was allocated by vstack_create.
+ * Please, only use with memory allocated by vtack_create!
+ */
+int vstack_destroy(Vstack *stack);
+
+// Pushes contents of src into stack.
+int vstack_push(Vstack *stack, void *src);
+
+// Pops top of stack into dest.
+int vstack_pop(Vstack *stack, void *dest);
+
+// Gets the contents of the top of the stack.
+int vstack_top(Vstack *stack, void *dest);
+
+/*
+ * Get the memory address of the element at the top of the stack.
+ * Should be used rarely as further pop operations can overwrite this memory.
+ * Thus, storing the pointer returned from this across pop operations almost always introduces a bug!
+ */
+void *vstack_top_direct(Vstack *stack);
+
+/*
+ * Returns current number of items pushed to the stack.
+ * Decreases when elements are popped.
+ */
 size_t vstack_len(Vstack *stack_ptr);
+
+/*
+ * Returns the total number of elements that can be pushed if the stack is empty.
+ * Calculated as number of elements the stack was told to allocate when creating/initializing.
+ */
 size_t vstack_cap(Vstack *stack_ptr);
