@@ -8,6 +8,9 @@
 
 #include <stdlib.h>
 #include <time.h>
+#include <stdio.h>
+
+int seed;
 
 int init_long(void *ptr){
     if(ptr == NULL){
@@ -64,8 +67,6 @@ int vpool_test(void){
 }
 
 int vdll_test(void){
-    srand(time(NULL));
-
     Vdll_functions functions = { .init = init_long, .deinit = deinit_long };
     #define TEST_VDLL_ARRAY_LEN (99)
     Vdll *dll = vdll_init(sizeof(long), &functions);
@@ -74,6 +75,11 @@ int vdll_test(void){
 
     long array[TEST_VDLL_ARRAY_LEN];
     long tmp;
+    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN; i++){
+        array[i] = rand();
+        assert(vdll_set(dll, i, &(array[i])) == 0);
+    }
+
     for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 10; i++){
         size_t pos = rand() % TEST_VDLL_ARRAY_LEN;
         array[pos] = rand();
@@ -94,8 +100,6 @@ int vdll_test(void){
 }
 
 int varray_test(void){
-    srand(time(NULL));
-
     Varray *array = varray_init(sizeof(long));
     assert(array != NULL);
     assert(varray_grow(&array, 4) == 0);
@@ -130,165 +134,140 @@ int varray_test(void){
 }
 
 int vstack_test(void){
-    srand(time(NULL));
-
-    Vstack *stack = vstack_init(sizeof(long), 3);
+    Vstack *stack = vstack_create(sizeof(long), 3);
     assert(stack != NULL);
     assert(vstack_len(stack) == 0);
     assert(vstack_cap(stack) == 3);
 
     long a = 1, b = 2, c = 3;
-    assert(vstack_push(&stack, &a) == 0);
-    assert(vstack_push(&stack, &b) == 0);
-    assert(vstack_push(&stack, &c) == 0);
+    assert(vstack_push(stack, &a) == 0);
+    assert(vstack_push(stack, &b) == 0);
+    assert(vstack_push(stack, &c) == 0);
     assert(vstack_len(stack) == 3);
     assert(vstack_cap(stack) == 3);
 
-    long *a_ptr, *b_ptr, *c_ptr;
-    c_ptr = vstack_top(&stack);
-    assert(c_ptr != NULL);
-    assert(*c_ptr == c);
-    c_ptr = vstack_pop(&stack);
-    b_ptr = vstack_pop(&stack);
-    a_ptr = vstack_pop(&stack);
-    assert(a_ptr != NULL);
-    assert(*a_ptr == a);
-    assert(b_ptr != NULL);
-    assert(*b_ptr == b);
-    assert(c_ptr != NULL);
-    assert(*c_ptr == c);
+    long a_test, b_test, c_test;
+    assert(vstack_top(stack, &c_test) == 0);
+    assert(c_test == c);
+    assert(vstack_pop(stack, &c_test) == 0);
+    assert(vstack_pop(stack, &b_test) == 0);
+    assert(vstack_pop(stack, &a_test) == 0);
+    assert(a_test == a);
+    assert(b_test == b);
+    assert(c_test == c);
 
     assert(vstack_len(stack) == 0);
     assert(vstack_cap(stack) == 3);
-    assert(vstack_destroy(&stack) == 0);
+    assert(vstack_destroy(stack) == 0);
     
     return 0;
 }
 
 int vqueue_test_nooverwrite(void){
-    srand(time(NULL));
-
-    Vqueue *queue = vqueue_init(sizeof(long), 3);
+    Vqueue *queue = vqueue_create(sizeof(long), 3);
     assert(queue != NULL);
     assert(vqueue_len(queue) == 0);
     assert(vqueue_cap(queue) == 3);
 
     long a = 1, b = 2, c = 3;
-    assert(vqueue_enqueue(&queue, &a, false) == 0);
-    assert(vqueue_enqueue(&queue, &b, false) == 0);
-    assert(vqueue_enqueue(&queue, &c, false) == 0);
+    assert(vqueue_enqueue(queue, &a, false) == 0);
+    assert(vqueue_enqueue(queue, &b, false) == 0);
+    assert(vqueue_enqueue(queue, &c, false) == 0);
     assert(vqueue_len(queue) == 3);
     assert(vqueue_cap(queue) == 3);
 
-    long *a_ptr, *b_ptr, *c_ptr;
-    a_ptr = vqueue_front(&queue);
-    c_ptr = vqueue_back(&queue);
-    assert(a_ptr != NULL);
-    assert(*a_ptr == a);
-    assert(c_ptr != NULL);
-    assert(*c_ptr == c);
-    a_ptr = vqueue_dequeue(&queue);
-    b_ptr = vqueue_dequeue(&queue);
-    c_ptr = vqueue_dequeue(&queue);
-    assert(a_ptr != NULL);
-    assert(*a_ptr == a);
-    assert(b_ptr != NULL);
-    assert(*b_ptr == b);
-    assert(c_ptr != NULL);
-    assert(*c_ptr == c);
+    long a_test, b_test, c_test;
+    assert(vqueue_front(queue, &a_test) == 0);
+    assert(vqueue_back(queue, &c_test) == 0);
+    assert(a_test == a);
+    assert(c_test == c);
+    assert(vqueue_dequeue(queue, &a_test) == 0);
+    assert(vqueue_dequeue(queue, &b_test) == 0);
+    assert(vqueue_dequeue(queue, &c_test) == 0);
+    assert(a_test == a);
+    assert(b_test == b);
+    assert(c_test == c);
 
     assert(vqueue_len(queue) == 0);
     assert(vqueue_cap(queue) == 3);
-    assert(vqueue_destroy(&queue) == 0);
+    vqueue_destroy(queue);
     
     return 0;
 }
 
 int vqueue_test_overwrite(void){
-    srand(time(NULL));
-
-    Vqueue *queue = vqueue_init(sizeof(long), 3);
+    Vqueue *queue = vqueue_create(sizeof(long), 3);
     assert(queue != NULL);
     assert(vqueue_len(queue) == 0);
     assert(vqueue_cap(queue) == 3);
 
     long a = 1, b = 2, c = 3, d = 4;
-    assert(vqueue_enqueue(&queue, &a, true) == 0);
-    assert(vqueue_enqueue(&queue, &b, true) == 0);
-    assert(vqueue_enqueue(&queue, &c, true) == 0);
-    assert(vqueue_enqueue(&queue, &d, true) == 0);
+    assert(vqueue_enqueue(queue, &a, true) == 0);
+    assert(vqueue_enqueue(queue, &b, true) == 0);
+    assert(vqueue_enqueue(queue, &c, true) == 0);
+    assert(vqueue_enqueue(queue, &d, true) == 0);
     assert(vqueue_len(queue) == 3);
     assert(vqueue_cap(queue) == 3);
 
-    long *b_ptr, *c_ptr, *d_ptr;
-    b_ptr = vqueue_front(&queue);
-    d_ptr = vqueue_back(&queue);
-    assert(b_ptr != NULL);
-    assert(*b_ptr == b);
-    assert(d_ptr != NULL);
-    assert(*d_ptr == d);
-    b_ptr = vqueue_dequeue(&queue);
-    c_ptr = vqueue_dequeue(&queue);
-    assert(b_ptr != NULL);
-    assert(*b_ptr == b);
-    assert(c_ptr != NULL);
-    assert(*c_ptr == c);
+    long b_test, c_test, d_test;
+    assert(vqueue_front(queue, &b_test) == 0);
+    assert(vqueue_back(queue, &d_test) == 0);
+    assert(b_test == b);
+    assert(d_test == d);
+    assert(vqueue_dequeue(queue, &b_test) == 0);
+    assert(vqueue_dequeue(queue, &c_test) == 0);
+    assert(b_test == b);
+    assert(c_test == c);
     assert(vqueue_len(queue) == 1);
     assert(vqueue_cap(queue) == 3);
 
     long e = 5, f = 6;
-    assert(vqueue_enqueue(&queue, &e, true) == 0);
-    assert(vqueue_enqueue(&queue, &f, true) == 0);
+    assert(vqueue_enqueue(queue, &e, true) == 0);
+    assert(vqueue_enqueue(queue, &f, true) == 0);
     assert(vqueue_len(queue) == 3);
     assert(vqueue_cap(queue) == 3);
 
-    long *e_ptr, *f_ptr;
-    d_ptr = vqueue_front(&queue);
-    f_ptr = vqueue_back(&queue);
-    assert(d_ptr != NULL);
-    assert(*d_ptr == d);
-    assert(f_ptr != NULL);
-    assert(*f_ptr == f);
-    d_ptr = vqueue_dequeue(&queue);
-    e_ptr = vqueue_dequeue(&queue);
-    f_ptr = vqueue_dequeue(&queue);
-    assert(d_ptr != NULL);
-    assert(*d_ptr == d);
-    assert(e_ptr != NULL);
-    assert(*e_ptr == e);
-    assert(f_ptr != NULL);
-    assert(*f_ptr == f);
+    long e_test, f_test;
+    assert(vqueue_front(queue, &d_test) == 0);
+    assert(vqueue_back(queue, &f_test) == 0);
+    assert(d_test == d);
+    assert(f_test == f);
+    assert(vqueue_dequeue(queue, &d_test) == 0);
+    assert(vqueue_dequeue(queue, &e_test) == 0);
+    assert(vqueue_dequeue(queue, &f_test) == 0);
+    assert(d_test == d);
+    assert(e_test == e);
+    assert(f_test == f);
 
     assert(vqueue_len(queue) == 0);
     assert(vqueue_cap(queue) == 3);
-    assert(vqueue_destroy(&queue) == 0);
+    vqueue_destroy(queue);
     
     return 0;
 }
 
 int vht_test(void){
-    srand(time(NULL));
-
     Vht *table = vht_init(sizeof(long), sizeof(char));
     assert(table != NULL);
     assert(vht_len(table) == 0);
 
-    long keys[257];
-    char vals[257];
-    char *ptrs[257];
+    #define TEST_VHT_ARRAY_LEN (257)
+    long keys[TEST_VHT_ARRAY_LEN];
+    char vals[TEST_VHT_ARRAY_LEN];
+    char *ptrs[TEST_VHT_ARRAY_LEN];
     size_t i;
-    for(i = 0; i < 257; i++){
+    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
         keys[i] = rand();
         vals[i] = rand();
     }
     assert(vht_get(table, &(keys[0])) == NULL);
 
-    for(i = 0; i < 257; i++){
+    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
         assert(vht_set(&table, &(keys[i]), &(vals[i])) == 0);
     }
-    assert(vht_len(table) == 257);
+    assert(vht_len(table) == TEST_VHT_ARRAY_LEN);
 
-    for(i = 0; i < 257; i++){
+    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
         ptrs[i] = vht_get(table, &(keys[i]));
         assert(ptrs[i] != NULL);
         assert(*(ptrs[i]) == vals[i]);
@@ -299,6 +278,9 @@ int vht_test(void){
 }
 
 int main(void){
+    seed = time(NULL);
+    printf("seed is %i\n", seed);
+    srand(seed);
     vpool_test();
     vdll_test();
     varray_test();
