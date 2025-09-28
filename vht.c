@@ -143,8 +143,8 @@ Vht *_vht_init(size_t key_size, size_t val_size, size_t num_elems){
     ret->val_size = val_size;
     ret->vals = calloc(num_elems, val_size);
     if(ret->vals == NULL){
-        free(ret);
         free(ret->keys);
+        free(ret);
         return NULL;
     }
 
