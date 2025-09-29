@@ -5,50 +5,77 @@
 #include <stdlib.h>
 #include <string.h>
 
-Varray *varray_init(size_t elem_size){
+Varray *varray_create(size_t elem_size){
     if(elem_size == 0){
         return NULL;
     }
 
     Varray *ret = calloc(1, sizeof(Varray));
-    ret->contents = NULL;
-    ret->elem_size = elem_size;
-    ret->stored = 0;
-    ret->cap = 0;
-
-    return ret;
-}
-
-int varray_destroy(Varray **array_ptr){
-    Varray *array;
-
-    if(array_ptr == NULL){
-        return 1;
-    }
-
-    array = *array_ptr;
-    if(array == NULL){
-        return 0;
-    }
-
-    if(array->contents != NULL){
-        free(array->contents);
-        array->contents = NULL;
-    }
-    free(array);
-    *array_ptr = NULL;
-
-    return 0;
-}
-
-void *varray_get(Varray **array_ptr, size_t pos){
-    Varray *array;
-    
-    if(array_ptr == NULL){
+    if(ret == NULL){
         return NULL;
     }
 
-    array = *array_ptr;
+    if(varray_init(ret, elem_size) != 0){
+        free(ret);
+        return NULL;
+    }
+    return ret;
+}
+
+int varray_init(Varray *array, size_t elem_size){
+    if(array == NULL || elem_size == 0){
+        return 1;
+    }
+
+    array->elems = NULL;
+    array->elem_size = elem_size;
+    array->stored = 0;
+    array->cap = 0;
+    return 0;
+}
+
+void varray_deinit(Varray *array){
+    if(array == NULL){
+        return;
+    }
+
+    if(array->elems != NULL){
+        free(array->elems);
+    }
+    memset(array, 0, sizeof(Varray));
+
+    return;
+}
+
+void varray_destroy(Varray *array){
+    if(array == NULL){
+        return;
+    }
+
+    varray_deinit(array);
+    free(array);
+
+    return;
+}
+
+int varray_get(Varray *array, size_t pos, void *dest){
+    void *src;
+    if(array == NULL || dest == NULL){
+        return 1;
+    }
+
+    src = varray_get_direct(array, pos);
+    if(src == NULL){
+        return 2;
+    }
+
+    if(memcpy(dest, src, array->elem_size) != dest){
+        return 3;
+    }
+    return 0;
+}
+
+void *varray_get_direct(Varray *array, size_t pos){
     if(array == NULL){
         return NULL;
     }
@@ -58,31 +85,24 @@ void *varray_get(Varray **array_ptr, size_t pos){
     }
 
     // pointer addition in this case scales by 1
-    return pointer_literal_addition(array->contents, pos * array->elem_size);
+    return pointer_literal_addition(array->elems, pos * array->elem_size);
 }
 
-int varray_set(Varray **array_ptr, size_t pos, void *src){
-    void *dest = varray_get(array_ptr, pos);
+int varray_set(Varray *array, size_t pos, void *src){
+    void *dest = varray_get_direct(array, pos);
 
     if(dest == NULL){
         return 1;
     }
 
-    if(memcpy(dest, src, (*array_ptr)->elem_size) != dest){
+    if(memcpy(dest, src, array->elem_size) != dest){
         return 2;
     }
 
     return 0;
 }
 
-int varray_grow(Varray **array_ptr, size_t increase){
-    Varray *array;
-
-    if(array_ptr == NULL){
-        return 1;
-    }
-    
-    array = *array_ptr;
+int varray_grow(Varray *array, size_t increase){
     if(array == NULL){
         return 2;
     }
@@ -91,9 +111,9 @@ int varray_grow(Varray **array_ptr, size_t increase){
         return 3;
     }
 
-    if(array->contents == NULL){
-        array->contents = calloc(increase, array->elem_size);
-        if(array->contents == NULL){
+    if(array->elems == NULL){
+        array->elems = calloc(increase, array->elem_size);
+        if(array->elems == NULL){
             return 4;
         }
 
@@ -105,16 +125,16 @@ int varray_grow(Varray **array_ptr, size_t increase){
             new_cap <<= 1;
         }
 
-        void *new_contents = calloc(new_cap, array->elem_size);
-        if(new_contents == NULL){
+        void *new_elems = calloc(new_cap, array->elem_size);
+        if(new_elems == NULL){
             return 5;
         }
 
-        if(memcpy(new_contents, array->contents, array->cap * array->elem_size) != new_contents){
+        if(memcpy(new_elems, array->elems, array->cap * array->elem_size) != new_elems){
             return 6;
         }
-        free(array->contents);
-        array->contents = new_contents;
+        free(array->elems);
+        array->elems = new_elems;
         array->stored += increase;
         array->cap = new_cap;
     }
@@ -122,14 +142,7 @@ int varray_grow(Varray **array_ptr, size_t increase){
     return 0;
 }
 
-int varray_shrink(Varray **array_ptr, size_t decrease){
-    Varray *array;
-
-    if(array_ptr == NULL){
-        return 1;
-    }
-    
-    array = *array_ptr;
+int varray_shrink(Varray *array, size_t decrease){
     if(array == NULL){
         return 2;
     }
@@ -142,11 +155,11 @@ int varray_shrink(Varray **array_ptr, size_t decrease){
         return 4;
     }
 
-    void *dest = realloc(array->contents, (array->cap - decrease) * array->elem_size);
+    void *dest = realloc(array->elems, (array->cap - decrease) * array->elem_size);
     if(dest == NULL){
         return 5;
     }
-    array->contents = dest;
+    array->elems = dest;
     array->cap -= decrease;
     if(array->cap < array->stored){
         array->stored = array->cap;
@@ -161,12 +174,4 @@ size_t varray_len(Varray *array){
     }
 
     return array->stored;
-}
-
-size_t varray_cap(Varray *array){
-    if(array == NULL){
-        return 0;
-    }
-
-    return array->cap;
 }

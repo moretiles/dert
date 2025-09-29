@@ -113,58 +113,95 @@ void *fnv_val(Vht *table, u32 offset){
     return val;
 }
 
-Vht *vht_init(size_t key_size, size_t val_size){
-    return _vht_init(key_size, val_size, 0);
+Vht *vht_create(size_t key_size, size_t val_size){
+    return _vht_create(key_size, val_size, VHT_INITIAL_NUM_ELEMS);
 }
 
-Vht *_vht_init(size_t key_size, size_t val_size, size_t num_elems){
-    Vht *ret;
-    if(key_size == 0 || val_size == 0){
+Vht *_vht_create(size_t key_size, size_t val_size, size_t num_elems){
+    Vht *ret = calloc(1, sizeof(Vht));
+    if(ret == NULL){
         return NULL;
+    }
+
+    if(_vht_init(ret, key_size, val_size, num_elems) != 0){
+        free(ret);
+        return NULL;
+    }
+    return ret;
+}
+
+int vht_init(Vht *table, size_t key_size, size_t val_size){
+    return _vht_init(table, key_size, val_size, VHT_INITIAL_NUM_ELEMS);
+}
+
+int _vht_init(Vht *table, size_t key_size, size_t val_size, size_t num_elems){
+    if(key_size == 0 || val_size == 0){
+        return 1;
     }
 
     if(num_elems == 0){
         num_elems = VHT_INITIAL_NUM_ELEMS;
     }
 
-    ret = calloc(1, sizeof(Vht));
-    if(ret == NULL){
-        return NULL;
-    }
-
     // Need bitfield to store additional information
-    ret->key_size = key_size;
-    ret->keys = calloc(num_elems, sizeof(struct vht_key_bf) + key_size);
-    if(ret->keys == NULL){
-        free(ret);
-        return NULL;
+    table->key_size = key_size;
+    table->keys = calloc(num_elems, sizeof(struct vht_key_bf) + key_size);
+    if(table->keys == NULL){
+        free(table);
+        return 2;
     }
 
-    ret->val_size = val_size;
-    ret->vals = calloc(num_elems, val_size);
-    if(ret->vals == NULL){
-        free(ret);
-        free(ret->keys);
-        return NULL;
+    table->val_size = val_size;
+    table->vals = calloc(num_elems, val_size);
+    if(table->vals == NULL){
+        free(table->keys);
+        free(table);
+        return 3;
     }
 
-    ret->len = 0;
-    ret->cap = num_elems;
-    return ret;
+    table->len = 0;
+    table->cap = num_elems;
+    return 0;
 }
 
-int vht_destroy(Vht *table){
+void vht_deinit(Vht *table){
     if(table == NULL){
-        return 1;
+        return;
     }
 
     free(table->keys);
     free(table->vals);
+    return;
+}
+
+void vht_destroy(Vht *table){
+    if(table == NULL){
+        return;
+    }
+
+    vht_deinit(table);
     free(table);
+    return;
+}
+
+int vht_get(Vht *table, void *key, void *dest){
+    void *src;
+    if(table == NULL || key == NULL || dest == NULL){
+        return 1;
+    }
+
+    src = vht_get_direct(table, key);
+    if(src == NULL){
+        return 2;
+    }
+
+    if(memcpy(dest, src, table->val_size) != dest){
+        return 3;
+    }
     return 0;
 }
 
-void *vht_get(Vht *table, void *key){
+void *vht_get_direct(Vht *table, void *key){
     size_t remaining_guesses;
     u32 offset, iterate;
     struct vht_key_bf *table_bf;
@@ -191,20 +228,17 @@ void *vht_get(Vht *table, void *key){
     return NULL;
 }
 
-int vht_set(Vht **table_ptr, void *key, void *val){
-    Vht *table;
+int vht_set(Vht *table, void *key, void *val){
     size_t remaining_guesses;
     u32 offset, iterate;
     struct vht_key_bf *table_bf;
     void *table_key, *table_val;
-    if(table_ptr == NULL || key == NULL || val == NULL){
+    if(table == NULL || key == NULL || val == NULL){
         return 1;
     }
 
-    table = *table_ptr;
     if((table->len * 4) >= table->cap){
-        vht_double(table_ptr);
-        table = *table_ptr;
+        vht_double(table);
     }
 
     remaining_guesses = table->cap;
@@ -265,26 +299,22 @@ int vht_del(Vht *table, void *key){
     return 4;
 }
 
-int vht_double(Vht **table_ptr){
-    Vht *table, *new_table;
+int vht_double(Vht *table){
+    Vht new_table;
     u32 offset, iterate;
     struct vht_key_bf *table_bf;
     void *random_sequence, *table_key, *table_val;
     size_t remaining_positions;
-    if(table_ptr == NULL){
+    if(table == NULL){
         return 1;
     }
 
-    table = *table_ptr;
-    if(table == NULL){
+    random_sequence = malloc(table->key_size);
+    if(_vht_init(&new_table, table->key_size, table->val_size, 4 * table->cap) != 0){
         return 2;
     }
-
-    random_sequence = malloc(table->key_size);
-    new_table = _vht_init(table->key_size, table->val_size, 4 * table->cap);
-    if(random_sequence == NULL || new_table == NULL){
+    if(random_sequence == NULL){
         free(random_sequence);
-        free(new_table);
         return 3;
     }
 
@@ -295,13 +325,11 @@ int vht_double(Vht **table_ptr){
     free(random_sequence);
     while(remaining_positions-- > 0){
         if(fnv_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
-            vht_destroy(new_table);
             return 4;
         }
 
         if(table_bf->occupied){
             if(vht_set(&new_table, table_key, table_val) != 0){
-                    vht_destroy(new_table);
                     return 5;
             }
         } else {
@@ -309,9 +337,9 @@ int vht_double(Vht **table_ptr){
         }
     }
 
-    *table_ptr = new_table;
-    if(vht_destroy(table) != 0){
-        return 6;
+    vht_deinit(table);
+    if(memcpy(table, &new_table, sizeof(Vht)) != table){
+        return 7;
     }
     return 0;
 }

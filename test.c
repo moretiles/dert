@@ -69,7 +69,7 @@ int vpool_test(void){
 int vdll_test(void){
     Vdll_functions functions = { .init = init_long, .deinit = deinit_long };
     #define TEST_VDLL_ARRAY_LEN (99)
-    Vdll *dll = vdll_init(sizeof(long), &functions);
+    Vdll *dll = vdll_create(sizeof(long), &functions);
     assert(dll != NULL);
     assert(vdll_grow(dll, TEST_VDLL_ARRAY_LEN) == 0);
 
@@ -94,41 +94,35 @@ int vdll_test(void){
 
     assert(vdll_len(dll) == TEST_VDLL_ARRAY_LEN);
     assert(vdll_shrink(dll, 1 + (TEST_VDLL_ARRAY_LEN / 2)) == 0);
-    assert(vdll_destroy(dll) == 0);
+    vdll_destroy(dll);
 
     return 0;
 }
 
 int varray_test(void){
-    Varray *array = varray_init(sizeof(long));
+    Varray *array = varray_create(sizeof(long));
     assert(array != NULL);
-    assert(varray_grow(&array, 4) == 0);
+    assert(varray_grow(array, 4) == 0);
     assert(varray_len(array) == 4);
-    assert(varray_cap(array) == 4);
-    assert(varray_grow(&array, 1) == 0);
+    assert(varray_grow(array, 1) == 0);
     assert(varray_len(array) == (4 + 1));
-    assert(varray_cap(array) > (4 + 1));
 
     long a = 1, b = 2, c = 3;
-    assert(varray_set(&array, 0, &a) == 0);
-    assert(varray_set(&array, 1, &b) == 0);
-    assert(varray_set(&array, 2, &c) == 0);
+    assert(varray_set(array, 0, &a) == 0);
+    assert(varray_set(array, 1, &b) == 0);
+    assert(varray_set(array, 2, &c) == 0);
 
-    long *a_ptr, *b_ptr, *c_ptr;
-    a_ptr = varray_get(&array, 0);
-    b_ptr = varray_get(&array, 1);
-    c_ptr = varray_get(&array, 2);
+    long a_test, b_test, c_test;
+    assert(varray_get(array, 0, &a_test) == 0);
+    assert(varray_get(array, 1, &b_test) == 0);
+    assert(varray_get(array, 2, &c_test) == 0);
 
-    assert(a_ptr != NULL);
-    assert(b_ptr != NULL);
-    assert(c_ptr != NULL);
+    assert(a_test == a);
+    assert(b_test == b);
+    assert(c_test == c);
 
-    assert(*a_ptr == a);
-    assert(*b_ptr == b);
-    assert(*c_ptr == c);
-
-    assert(varray_shrink(&array, 1) == 0);
-    assert(varray_destroy(&array) == 0);
+    assert(varray_shrink(array, 1) == 0);
+    varray_destroy(array);
 
     return 0;
 }
@@ -247,33 +241,32 @@ int vqueue_test_overwrite(void){
 }
 
 int vht_test(void){
-    Vht *table = vht_init(sizeof(long), sizeof(char));
+    Vht *table = vht_create(sizeof(long), sizeof(char));
     assert(table != NULL);
     assert(vht_len(table) == 0);
 
     #define TEST_VHT_ARRAY_LEN (257)
     long keys[TEST_VHT_ARRAY_LEN];
     char vals[TEST_VHT_ARRAY_LEN];
-    char *ptrs[TEST_VHT_ARRAY_LEN];
+    char ptrs[TEST_VHT_ARRAY_LEN];
     size_t i;
     for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
         keys[i] = rand();
         vals[i] = rand();
     }
-    assert(vht_get(table, &(keys[0])) == NULL);
+    assert(vht_get_direct(table, &(keys[0])) == NULL);
 
     for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
-        assert(vht_set(&table, &(keys[i]), &(vals[i])) == 0);
+        assert(vht_set(table, &(keys[i]), &(vals[i])) == 0);
     }
     assert(vht_len(table) == TEST_VHT_ARRAY_LEN);
 
     for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
-        ptrs[i] = vht_get(table, &(keys[i]));
-        assert(ptrs[i] != NULL);
-        assert(*(ptrs[i]) == vals[i]);
+        assert(vht_get(table, &(keys[i]), &(ptrs[i])) == 0);
+        assert(ptrs[i] == vals[i]);
     }
 
-    assert(vht_destroy(table) == 0);
+    vht_destroy(table);
     return 0;
 }
 
