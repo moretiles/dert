@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-Vdll_node *vdll_node_init(size_t elem_size, int (*init)(void *arg)){
+Vdll_node *vdll_node_create(size_t elem_size, int (*init)(void *arg)){
 	if(elem_size == 0){
 		return NULL;
 	}
@@ -104,34 +104,79 @@ int vdll_rewind(Vdll *dll, size_t decrement){
 	return 0;
 }
 
-Vdll *vdll_init(size_t elem_size, Vdll_functions *functions){
+Vdll *vdll_create(size_t elem_size, Vdll_functions *functions){
 	Vdll *ret = malloc(sizeof(Vdll));
 	if(ret == 0){
 		return NULL;
 	}
 
-	ret->ptr = NULL;
-	ret->elem_size = elem_size;
-	ret->pos = 0;
-	ret->cap = 0;
-	ret->functions = functions;
+    if(vdll_init(ret, elem_size, functions) != 0){
+        free(ret);
+        return NULL;
+    }
 	return ret;
 }
 
+int vdll_init(Vdll *dll, size_t elem_size, Vdll_functions *functions){
+    if(dll == NULL || elem_size == 0){
+        return 1;
+    }
+
+	dll->ptr = NULL;
+	dll->elem_size = elem_size;
+	dll->pos = 0;
+	dll->cap = 0;
+	dll->functions = functions;
+    return 0;
+}
+
+void vdll_deinit(Vdll *dll){
+    if(dll == NULL){
+        return;
+    }
+
+	if(dll->cap != 0){
+		vdll_shrink(dll, dll->cap);
+	}
+
+    return;
+}
+
+void vdll_destroy(Vdll *dll){
+	if(dll == NULL){
+		return;
+	}
+
+    vdll_deinit(dll);
+
+	free(dll);
+	return;
+}
+
 int vdll_get(Vdll *dll, size_t pos, void *dest){
+    void *src;
 	if(dll == NULL || dest == NULL){
 		return 1;
 	}
 
-	if(vdll_seek(dll, pos) != 0){
-		return 2;
-	}
-
-	if(memcpy(dest, dll->ptr->data, dll->elem_size) != dest){
+    src = vdll_get_direct(dll, pos);
+	if(memcpy(dest, src, dll->elem_size) != dest){
 		return 3;
 	}
 
 	return 0;
+}
+
+void *vdll_get_direct(Vdll *dll, size_t pos){
+    if(dll == NULL){
+        return NULL;
+    }
+
+	if(vdll_seek(dll, pos) != 0){
+		return NULL;
+	}
+
+    return dll->ptr->data;
 }
 
 int vdll_set(Vdll *dll, size_t pos, void *src){
@@ -150,21 +195,6 @@ int vdll_set(Vdll *dll, size_t pos, void *src){
 	return 0;
 }
 
-int vdll_destroy(Vdll *dll){
-	if(dll == NULL){
-		return 1;
-	}
-
-	if(dll->cap != 0){
-		if(vdll_shrink(dll, dll->cap) != 0){
-			return 2;
-		}
-	}
-
-	free(dll);
-	return 0;
-}
-
 size_t vdll_len(Vdll *dll){
 	if(dll == NULL){
 		return 0;
@@ -174,6 +204,10 @@ size_t vdll_len(Vdll *dll){
 }
 
 int vdll_insert(Vdll *dll, size_t pos, size_t num_elems){
+    return _vdll_insert(dll, pos, num_elems, false);
+}
+
+int _vdll_insert(Vdll *dll, size_t pos, size_t num_elems, bool after){
 	if(dll == NULL || num_elems == 0){
 		return 1;
 	}
@@ -187,7 +221,7 @@ int vdll_insert(Vdll *dll, size_t pos, size_t num_elems){
         if(dll->functions != NULL && dll->functions->init != NULL){
             init = dll->functions->init;
         }
-        Vdll_node *new = vdll_node_init(dll->elem_size, init);
+        Vdll_node *new = vdll_node_create(dll->elem_size, init);
 
 		if(new == NULL){
 			if(i > 1){
@@ -197,9 +231,20 @@ int vdll_insert(Vdll *dll, size_t pos, size_t num_elems){
 			return 3;
 		}
 
+        // after controls whether we insert before or after element ptr references.
 		if(dll->ptr == NULL){
 			dll->ptr = new;
-		} else {
+		} else if (after){
+            new->prev = dll->ptr->prev;
+            new->next = dll->ptr;
+            if(dll->ptr->prev){
+                dll->ptr->prev->next = new;
+            }
+            dll->ptr->prev = new;
+
+            // make sure pos stays same, even with nodes being inserted
+            dll->ptr = new;
+        } else {
 			new->prev = dll->ptr;
 			new->next = dll->ptr->next;
 			if(dll->ptr->next){
@@ -274,7 +319,7 @@ int vdll_grow(Vdll *dll, size_t num_elems){
 	if(dll->cap > 1){
 		end = dll->cap - 1;
 	}
-	if(vdll_insert(dll, end, num_elems) != 0){
+	if(_vdll_insert(dll, end, num_elems, true) != 0){
 		return 2;
 	}
 

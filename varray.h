@@ -1,20 +1,52 @@
 #include <stddef.h>
 
 typedef struct varray {
-    void *contents;
+    // elements that form the Varray
+    void *elems;
+
+    // size of individual elements
     size_t elem_size;
+
+    // number of elements on the stack
     size_t stored;
+
+    // total number of elements the Varray can (currently) support
     size_t cap;
 } Varray;
 
-Varray *varray_init(size_t elem_size);
-int varray_destroy(Varray **array_ptr);
+// Allocates memory for and initializes an empty Varray
+Varray *varray_create(size_t elem_size);
 
-void *varray_get(Varray **array_ptr, size_t pos);
-int varray_set(Varray **array_ptr, size_t pos, void *src);
+// Initializes a Varray
+int varray_init(Varray *array, size_t elem_size);
 
-int varray_grow(Varray **array_ptr, size_t increase);
-int varray_shrink(Varray **array_ptr, size_t decrease);
+// Deinitializes a Varray
+void varray_deinit(Varray *array);
 
+/*
+ * Destroys a Varray that was allocated by varray_create.
+ * Please, only use with memory allocated by varray_create!
+ */
+void varray_destroy(Varray *array);
+
+// Copies the element at pos of array to dest.
+int varray_get(Varray *array, size_t pos, void *dest);
+
+/*
+ * Get the memory address of the element at pos of array.
+ * Should be used carefully as deleting elements from the Varray can overwrite this memory.
+ * Thus, storing the pointer returned from this across delete operations almost always introduces a bug!
+ */
+void *varray_get_direct(Varray *array, size_t pos);
+
+// Copies the element at src to pos of array.
+int varray_set(Varray *array, size_t pos, void *src);
+
+// Append increase new elements to the end of the Varray.
+int varray_grow(Varray *array, size_t increase);
+
+// Remove decreate existing elements from the end of the Varray.
+int varray_shrink(Varray *array, size_t decrease);
+
+// Provide the current number of positions at which elements can be stored.
 size_t varray_len(Varray *array);
-size_t varray_cap(Varray *array);

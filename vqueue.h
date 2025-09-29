@@ -2,16 +2,19 @@
 #include <stdbool.h>
 
 typedef struct vqueue {
+    // elements that are in the queue placed here
     void *elems;
 
+    // size of individual elements
     size_t elem_size;
 
-    // front_pos
+    // current position of the first element of the queue
     size_t front;
 
-    // back_pos
+    // current position of the last element of the queue
     size_t back;
 
+    // total number of elements this queue can store, if empty
     size_t cap;
 } Vqueue;
 
@@ -41,7 +44,7 @@ int vqueue_front(Vqueue *queue, void *dest);
 
 /*
  * Gets the memory address of the element in the front of the queue.
- * Should be used rarely as further enqeue/dequeue operations can overwrite this memory.
+ * Should be used carefully as further enqeue/dequeue operations can overwrite this memory.
  * Thus, storing the pointer returned from this across operations almost always introduces a bug!
  */
 void *vqueue_front_direct(Vqueue *queue);
@@ -51,7 +54,7 @@ int vqueue_back(Vqueue *queue, void *dest);
 
 /*
  * Gets the memory address of the element in the back of the queue.
- * Should be used rarely as further enqeue/dequeue operations can overwrite this memory.
+ * Should be used carefully as further enqeue/dequeue operations can overwrite this memory.
  * Thus, storing the pointer returned from this across operations almost always introduces a bug!
  */
 void *vqueue_back_direct(Vqueue *queue);

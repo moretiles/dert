@@ -19,7 +19,8 @@ struct vht_key_bf *fnv_bf(Vht *table, u32 offset);
 void *fnv_key(Vht *table, u32 offset);
 void *fnv_val(Vht *table, u32 offset);
 
-int vht_double(Vht **table_ptr);
-Vht *_vht_init(size_t key_size, size_t val_size, size_t num_elems);
+int vht_double(Vht *table_ptr);
+Vht *_vht_create(size_t key_size, size_t val_size, size_t num_elems);
+int _vht_init(Vht *table, size_t key_size, size_t val_size, size_t num_elems);
 
 size_t vht_cap(Vht *table);
