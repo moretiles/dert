@@ -79,7 +79,7 @@ void fqueue_destroy(Fqueue *queue){
     return;
 }
 
-int fqueue_len(Fqueue *queue){
+size_t fqueue_len(Fqueue *queue){
     if(queue == NULL){
         return 0;
     }
@@ -87,51 +87,85 @@ int fqueue_len(Fqueue *queue){
     return queue->writeCursor - queue->readCursor;
 }
 
-int fqueue_dequeue(Fqueue *store, char *data, int size) {
-    if (size <= 0) {
+size_t fqueue_used(Fqueue *queue){
+    if(queue == NULL){
+        return 0;
+    }
+
+    return queue->writeCursor - queue->readCursor;
+}
+
+size_t fqueue_unused(Fqueue *queue){
+    if(queue == NULL){
+        return 0;
+    }
+
+    return queue->cap - queue->writeCursor;
+}
+
+size_t fqueue_cap(Fqueue *queue){
+    if(queue == NULL){
+        return 0;
+    }
+
+    return queue->cap;
+}
+
+int fqueue_dequeue(Fqueue *store, char *data, size_t size) {
+    if(store == NULL || data == NULL){
+        return ERR_QUEUE_NULL;
+    }
+    if (size == 0) {
         return ERR_QUEUE_INVALID_SIZE;
     }
-    if (size > store->writeCursor - store->readCursor) {
-        size = store->writeCursor - store->readCursor;
+    if (size > fqueue_used(store)) {
+        return ERR_QUEUE_CANNOT_WRITE_QUANTITY;
     }
 
     memcpy(data, store->bytes + store->readCursor, size);
     store->readCursor = store->readCursor + size;
-    return size;
+    return 0;
 }
 
-int fqueue_enqueue(Fqueue *store, char *data, int size) {
-    if (size <= 0) {
+int fqueue_enqueue(Fqueue *store, char *data, size_t size) {
+    if(store == NULL || data == NULL){
+        return ERR_QUEUE_NULL;
+    }
+    if (size == 0) {
         return ERR_QUEUE_INVALID_SIZE;
     }
-    if (store->writeCursor + size > store->cap) {
-        return ERR_QUEUE_OUT_OF_MEMORY;
+    if (size > fqueue_unused(store)) {
+        return ERR_QUEUE_CANNOT_READ_QUANTITY;
     }
 
     memcpy(store->bytes + store->writeCursor, data, size);
     store->writeCursor = store->writeCursor + size;
-    return size;
+    return 0;
 }
 
 /*
  * Move size bytes from readQueue to writeQueue
  */
-int fqueue_exchange(Fqueue *readQueue, Fqueue *writeQueue, int size) {
-    if (size <= 0) {
+int fqueue_exchange(Fqueue *readQueue, Fqueue *writeQueue, size_t size) {
+    if(readQueue == NULL || writeQueue == NULL){
+        return ERR_QUEUE_NULL;
+    }
+    if (size == 0) {
         return ERR_QUEUE_INVALID_SIZE;
     }
-    if (size > readQueue->writeCursor - readQueue->readCursor) {
-        size = readQueue->writeCursor - readQueue->readCursor;
+    if (size > fqueue_used(readQueue)) {
+        return ERR_QUEUE_CANNOT_READ_QUANTITY;
     }
-    if (writeQueue->writeCursor + size > writeQueue->cap) {
-        return ERR_QUEUE_OUT_OF_MEMORY;
+    if(size > fqueue_unused(writeQueue)){
+        return ERR_QUEUE_CANNOT_WRITE_QUANTITY;
     }
+
     memcpy(writeQueue->bytes + writeQueue->writeCursor,
            readQueue->bytes + readQueue->readCursor,
            size);
     readQueue->readCursor = readQueue->readCursor + size;
     writeQueue->writeCursor = writeQueue->writeCursor + size;
-    return size;
+    return 0;
 }
 
 // Dequeue a single byte from store->bytes
@@ -146,40 +180,59 @@ int fqueue_enqueuec(Fqueue *store, char c) {
 
 // Copy from store->bytes over [readCursor, writeCursor) to start of store->bytes
 int fqueue_fold_down(Fqueue *store) {
-    int diff = store->writeCursor - store->readCursor;
-    if (diff > store->readCursor) {
-        return ERR_QUEUE_OUT_OF_MEMORY;
+    if(store == NULL){
+        return ERR_QUEUE_NULL;
     }
 
-    if(diff > 0){
-        memmove(store->bytes, store->bytes + store->readCursor, diff);
+    size_t diff = store->writeCursor - store->readCursor;
+    if (diff > (1 + (store->cap / 2))) {
+        return ERR_QUEUE_CANNOT_WRITE_QUANTITY;
     }
+
+    memmove(store->bytes, store->bytes + store->readCursor, diff);
     store->writeCursor = diff;
     store->readCursor = 0;
-    return diff;
+    return 0;
 }
 
 // Enqueue MAX_BLOCK_SIZE bytes from attached file into store->bytes
-int fqueue_fenqueue(Fqueue *store, int size) {
-    int read = 0;
-    if (store->writeCursor + size > store->cap) {
-        return ERR_QUEUE_OUT_OF_MEMORY;
+int fqueue_fenqueue(Fqueue *store, size_t size) {
+    size_t read;
+
+    if(store == NULL){
+        return ERR_QUEUE_NULL;
+    }
+    if (size == 0) {
+        return ERR_QUEUE_INVALID_SIZE;
+    }
+    if(size > fqueue_unused(store)){
+        return ERR_QUEUE_CANNOT_READ_QUANTITY;
     }
     if (ferror(store->file)) {
         return ERR_QUEUE_FILE_IO;
     }
 
     read = fread(store->bytes + store->writeCursor, 1, size, store->file);
+    if(read != size){
+        return ERR_QUEUE_FILE_READ_INCOMPLETE;
+    }
     store->writeCursor = store->writeCursor + read;
-    return read;
+    return 0;
 }
 
 // Dequeue MAX_BLOCK_SIZE bytes in store->bytes to a file
-int fqueue_fdequeue(Fqueue *store, int size) {
-    int difference = 0;
-    int write = 0;
-    if (store->writeCursor == 0) {
-        return ERR_QUEUE_EMPTY;
+int fqueue_fdequeue(Fqueue *store, size_t size) {
+    if(store == NULL){
+        return ERR_QUEUE_NULL;
+    }
+    if (size == 0) {
+        return ERR_QUEUE_INVALID_SIZE;
+    }
+
+    size_t difference = 0;
+    size_t write = 0;
+    if(size > fqueue_used(store)){
+        return ERR_QUEUE_CANNOT_WRITE_QUANTITY;
     }
     if (ferror(store->file)) {
         return ERR_QUEUE_FILE_IO;
@@ -188,54 +241,44 @@ int fqueue_fdequeue(Fqueue *store, int size) {
     difference = store->writeCursor - store->readCursor;
     size = (size > difference) ? difference : size;
     write = fwrite(store->bytes, 1, size, store->file);
-    store->writeCursor = store->writeCursor - difference;
-    if (store->writeCursor < 0) {
-        store->writeCursor = 0;
+    if(write != size){
+        return ERR_QUEUE_FILE_WRITE_INCOMPLETE;
     }
-    return write;
+    store->writeCursor = store->writeCursor - difference;
+    return 0;
 }
 
-int fqueue_rewind_read_cursor(Fqueue *store, int back) {
-    if (store->readCursor - back < 0) {
+int fqueue_rewind_read_cursor(Fqueue *store, size_t back) {
+    if(store == NULL){
+        return ERR_QUEUE_NULL;
+    }
+
+    if (back == 0) {
         return ERR_QUEUE_INVALID_SIZE;
+    }
+    if (store->readCursor < back) {
+        return ERR_QUEUE_CANNOT_WRITE_QUANTITY;
     }
 
     store->readCursor -= back;
-    return back;
+    return 0;
 }
 
-int fqueue_rewind_write_cursor(Fqueue *store, int back) {
-    if (store->writeCursor - back < 0) {
+int fqueue_rewind_write_cursor(Fqueue *store, size_t back) {
+    if(store == NULL){
+        return ERR_QUEUE_NULL;
+    }
+
+    if (back == 0) {
         return ERR_QUEUE_INVALID_SIZE;
+    }
+    if (store->writeCursor < back) {
+        return ERR_QUEUE_CANNOT_WRITE_QUANTITY;
     }
 
     store->writeCursor -= back;
     if(store->writeCursor < store->readCursor){
         store->readCursor = store->writeCursor;
     }
-    return back;
-}
-
-/*
-bool fqueue_queueCanHold(Fqueue *queue, int size) {
-    if(queue == NULL) {
-        return false;
-    }
-
-    return queue->writeCursor + size < queue->cap;
-}
-
-int fqueue_queueEnsureSpace(Fqueue *queue, int max) {
-    if(queue == NULL) {
-        return 1;
-    }
-
-    if(!queueCanHold(queue, max)) {
-        fdequeue(queue, queue->writeCursor - queue->readCursor);
-        queue->writeCursor = 0;
-        queue->readCursor = 0;
-    }
-
     return 0;
 }
-*/
