@@ -228,12 +228,12 @@ void *vht_get_direct(Vht *table, void *key){
     return NULL;
 }
 
-int vht_set(Vht *table, void *key, void *val){
+int vht_set(Vht *table, void *key, void *src){
     size_t remaining_guesses;
     u32 offset, iterate;
     struct vht_key_bf *table_bf;
     void *table_key, *table_val;
-    if(table == NULL || key == NULL || val == NULL){
+    if(table == NULL || key == NULL || src == NULL){
         return 1;
     }
 
@@ -251,11 +251,11 @@ int vht_set(Vht *table, void *key, void *val){
             memset(table_bf, 0, sizeof(struct vht_key_bf));
             table_bf->occupied = true;
             memcpy(table_key, key, table->key_size);
-            memcpy(table_val, val, table->val_size);
+            memcpy(table_val, src, table->val_size);
             table->len++;
             return 0;
         } else if(table_bf->occupied && !memcmp(key, table_key, table->key_size)){
-            memcpy(table_val, val, table->val_size);
+            memcpy(table_val, src, table->val_size);
             return 0;
         }
 
