@@ -10,7 +10,6 @@
 * Queue.
 * Ring Buffer (Queue data structure with overwrite enabled).
 * Hashmap -- build using two parallel varray.
-* TODO:
 * File Buffered Queue -- Already exists, organize.
 
 # Random

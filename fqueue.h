@@ -15,11 +15,14 @@
 #define MAX_BLOCK_SIZE (3 * 1024 * 1024)
 #endif
 
-#define ERR_QUEUE_OUT_OF_MEMORY (-1 * (1 << 0))
 #define ERR_QUEUE_INVALID_SIZE (-1 * (1 << 1))
-#define ERR_QUEUE_EMPTY (-1 * (1 << 2))
+#define ERR_QUEUE_NULL (-1 * (1 << 2))
+#define ERR_QUEUE_CANNOT_READ_QUANTITY (-1 * (1 << 3))
+#define ERR_QUEUE_CANNOT_WRITE_QUANTITY (-1 * (1 << 4))
 #define ERR_QUEUE_FILE_OPEN (-1 * (1 << 8))
 #define ERR_QUEUE_FILE_IO (-1 * (1 << 9))
+#define ERR_QUEUE_FILE_READ_INCOMPLETE (-1 * (1 << 10))
+#define ERR_QUEUE_FILE_WRITE_INCOMPLETE (-1 * (1 << 11))
 
 #ifndef FQUEUE_STRUCT
 #define FQUEUE_STRUCT 1
@@ -31,13 +34,13 @@ typedef struct fqueue {
     char *bytes;
 
     // Offset into bytes to begin next write at
-    int writeCursor;
+    size_t writeCursor;
 
     // Offset into bytes to begin next read at
-    int readCursor;
+    size_t readCursor;
 
     // Total number of bytes that can be stored in fqueue->bytes
-    int cap;
+    size_t cap;
 } Fqueue;
 #endif
 
@@ -57,10 +60,19 @@ void fqueue_deinit(Fqueue *queue);
 void fqueue_destroy(Fqueue *queue);
 
 // Get length of queue
-int fqueue_len(Fqueue *queue);
+size_t fqueue_len(Fqueue *queue);
+
+// Get used space of queue
+size_t fqueue_used(Fqueue *queue);
+
+// Get unused space of queue
+size_t fqueue_unused(Fqueue *queue);
+
+// Get length of queue
+size_t fqueue_cap(Fqueue *queue);
 
 // Enqueue size bytes to store->bytes
-int fqueue_enqueue(Fqueue *store, char *data, int size);
+int fqueue_enqueue(Fqueue *store, char *data, size_t size);
 
 // Enqueue a single byte to store->bytes
 int fqueue_enqueuec(Fqueue *store, char c);
@@ -69,39 +81,33 @@ int fqueue_enqueuec(Fqueue *store, char c);
  * Dequeue size bytes from store->bytes to data
  * Uses readCursor to know what the bottom should be
  */
-int fqueue_dequeue(Fqueue *store, char *data, int size);
+int fqueue_dequeue(Fqueue *store, char *data, size_t size);
 
 // Dequeue a single byte from store->bytes
 int fqueue_dequeuec(Fqueue *store, char *cptr);
 
 // Enqueue MAX_BLOCK_SIZE bytes from attached file into store->bytes
-int fqueue_fenqueue(Fqueue *store, int size);
+int fqueue_fenqueue(Fqueue *store, size_t size);
 
 // Dequeue MAX_BLOCK_SIZE bytes in store->bytes to a file
-int fqueue_fdequeue(Fqueue *store, int size);
+int fqueue_fdequeue(Fqueue *store, size_t size);
 
 /* 
  * Decrement the read cursor of store by len
  * Useful to read bytes you've already read from store
  */
-int fqueue_rewind_read_cursor(Fqueue *store, int len);
+int fqueue_rewind_read_cursor(Fqueue *store, size_t len);
 
 /*
  * Decrement the write cursor of store by len
  * Useful to (prepare) to overwrite bytes written to store
  */
-int fqueue_rewind_write_cursor(Fqueue *store, int len);
+int fqueue_rewind_write_cursor(Fqueue *store, size_t len);
 
 /*
  * Move size bytes from readQueue to writeQueue
  */
-int fqueue_exchange(Fqueue *readQueue, Fqueue *writeQueue, int size);
+int fqueue_exchange(Fqueue *readQueue, Fqueue *writeQueue, size_t size);
 
 // Copy from store->bytes over [readCursor, writeCursor) to start of store->bytes
 int fqueue_fold_down(Fqueue *store);
-
-/*
-bool fqueue_queueCanHold(Fqueue *queue, int size);
-
-int fqueue_queueEnsureSpace(Fqueue *store, int max);
-*/
