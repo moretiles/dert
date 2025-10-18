@@ -5,6 +5,7 @@
 #include "vstack.h"
 #include "vqueue.h"
 #include "vht.h"
+#include "fqueue.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -270,6 +271,63 @@ int vht_test(void){
     return 0;
 }
 
+int fqueue_test(void){
+    Fqueue *in = fqueue_create(999, "tests/fqueue_in.txt", "r");
+    Fqueue *out = fqueue_create(999, "tests/fqueue_out.txt", "w");
+    assert(in != NULL);
+    assert(out != NULL);
+
+    // Enqueue / Dequeue test
+    char *dequeue_text = "testing dequeue\n";
+    int dequeue_text_len = strlen(dequeue_text);
+    char dequeue_text_check[999] = "";
+    assert(fqueue_enqueue(in, dequeue_text, dequeue_text_len) == dequeue_text_len);
+    assert(fqueue_dequeue(in, dequeue_text_check, fqueue_len(in)) == dequeue_text_len);
+    assert(!strcmp(dequeue_text, dequeue_text_check));
+    // now that all text content in the fqueue in has been consumed fold down
+    assert(in->readCursor > 0);
+    assert(in->writeCursor > 0);
+    assert(fqueue_fold_down(in) == 0);
+    assert(in->readCursor == 0);
+    assert(in->writeCursor == 0);
+
+    // Exchange / Rewind_Read_Cursor test
+    char *exchange_text = "testing exchange\n";
+    int exchange_text_len = strlen(exchange_text);
+    char exchange_text_check[999] = "";
+    assert(fqueue_enqueue(in, exchange_text, exchange_text_len) == exchange_text_len);
+    assert(fqueue_exchange(in, out, fqueue_len(in)) == exchange_text_len);
+    assert(fqueue_dequeue(out, exchange_text_check, fqueue_len(out)) == exchange_text_len);
+    assert(!strcmp(exchange_text, exchange_text_check));
+    assert(fqueue_rewind_read_cursor(in, exchange_text_len) == exchange_text_len);
+    assert(fqueue_exchange(in, out, fqueue_len(in)) == exchange_text_len);
+    assert(fqueue_dequeue(out, exchange_text_check, fqueue_len(out)) == exchange_text_len);
+    assert(fqueue_fold_down(in) == 0);
+    assert(fqueue_fold_down(out) == 0);
+
+    // Rewind_Write_Cursor test
+    char *rewind_text = "123456";
+    int rewind_text_len = 6;
+    char *rewind_text_partial = "123";
+    char rewind_text_check[999] = "";
+    int rewind_text_partial_len = 3;
+    assert(fqueue_enqueue(in, rewind_text, rewind_text_len) == rewind_text_len);
+    assert(fqueue_rewind_write_cursor(in, rewind_text_len - rewind_text_partial_len) == (rewind_text_len - rewind_text_partial_len));
+    assert(fqueue_dequeue(in, rewind_text_check, rewind_text_partial_len) == rewind_text_partial_len);
+    assert(!strcmp(rewind_text_partial, rewind_text_check));
+    assert(fqueue_fold_down(in) == 0);
+
+    // Fenqueue / Fdequeue test
+    int fenqueue_text_len = 18;
+    assert(fqueue_fenqueue(in, fenqueue_text_len) == fenqueue_text_len);
+    assert(fqueue_exchange(in, out, fenqueue_text_len) == fenqueue_text_len);
+    assert(fqueue_fdequeue(out, fqueue_len(out)) == fenqueue_text_len);
+
+    fqueue_destroy(in);
+    fqueue_destroy(out);
+    return 0;
+}
+
 int main(void){
     seed = time(NULL);
     printf("seed is %i\n", seed);
@@ -281,4 +339,5 @@ int main(void){
     vqueue_test_nooverwrite();
     vqueue_test_overwrite();
     vht_test();
+    fqueue_test();
 }
