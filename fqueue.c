@@ -79,12 +79,12 @@ void fqueue_destroy(Fqueue *queue){
     return;
 }
 
-size_t fqueue_len(Fqueue *queue){
+size_t fqueue_prev(Fqueue *queue){
     if(queue == NULL){
         return 0;
     }
 
-    return queue->writeCursor - queue->readCursor;
+    return queue->readCursor;
 }
 
 size_t fqueue_used(Fqueue *queue){
@@ -143,9 +143,6 @@ int fqueue_enqueue(Fqueue *store, char *data, size_t size) {
     return 0;
 }
 
-/*
- * Move size bytes from readQueue to writeQueue
- */
 int fqueue_exchange(Fqueue *readQueue, Fqueue *writeQueue, size_t size) {
     if(readQueue == NULL || writeQueue == NULL){
         return ERR_QUEUE_NULL;
@@ -168,17 +165,14 @@ int fqueue_exchange(Fqueue *readQueue, Fqueue *writeQueue, size_t size) {
     return 0;
 }
 
-// Dequeue a single byte from store->bytes
 int fqueue_dequeuec(Fqueue *store, char *cptr) {
     return fqueue_dequeue(store, cptr, 1);
 }
 
-// Enqueue a single byte to store->bytes
 int fqueue_enqueuec(Fqueue *store, char c) {
     return fqueue_enqueue(store, &c, 1);
 }
 
-// Copy from store->bytes over [readCursor, writeCursor) to start of store->bytes
 int fqueue_fold_down(Fqueue *store) {
     if(store == NULL){
         return ERR_QUEUE_NULL;
@@ -195,7 +189,6 @@ int fqueue_fold_down(Fqueue *store) {
     return 0;
 }
 
-// Enqueue MAX_BLOCK_SIZE bytes from attached file into store->bytes
 int fqueue_fenqueue(Fqueue *store, size_t size) {
     size_t read;
 
@@ -220,7 +213,6 @@ int fqueue_fenqueue(Fqueue *store, size_t size) {
     return 0;
 }
 
-// Dequeue MAX_BLOCK_SIZE bytes in store->bytes to a file
 int fqueue_fdequeue(Fqueue *store, size_t size) {
     if(store == NULL){
         return ERR_QUEUE_NULL;

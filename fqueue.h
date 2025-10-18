@@ -10,19 +10,14 @@
 #include <string.h>
 #include <stdbool.h>
 
-// Make sure that MAX_BLOCK_SIZE is a multiple of 3 and 4
-#ifndef MAX_BLOCK_SIZE
-#define MAX_BLOCK_SIZE (3 * 1024 * 1024)
-#endif
-
-#define ERR_QUEUE_INVALID_SIZE (-1 * (1 << 1))
-#define ERR_QUEUE_NULL (-1 * (1 << 2))
-#define ERR_QUEUE_CANNOT_READ_QUANTITY (-1 * (1 << 3))
-#define ERR_QUEUE_CANNOT_WRITE_QUANTITY (-1 * (1 << 4))
-#define ERR_QUEUE_FILE_OPEN (-1 * (1 << 8))
-#define ERR_QUEUE_FILE_IO (-1 * (1 << 9))
-#define ERR_QUEUE_FILE_READ_INCOMPLETE (-1 * (1 << 10))
-#define ERR_QUEUE_FILE_WRITE_INCOMPLETE (-1 * (1 << 11))
+#define ERR_QUEUE_INVALID_SIZE (1)
+#define ERR_QUEUE_NULL (2)
+#define ERR_QUEUE_CANNOT_READ_QUANTITY (3)
+#define ERR_QUEUE_CANNOT_WRITE_QUANTITY (4)
+#define ERR_QUEUE_FILE_OPEN (5)
+#define ERR_QUEUE_FILE_IO (6)
+#define ERR_QUEUE_FILE_READ_INCOMPLETE (7)
+#define ERR_QUEUE_FILE_WRITE_INCOMPLETE (8)
 
 #ifndef FQUEUE_STRUCT
 #define FQUEUE_STRUCT 1
@@ -59,8 +54,8 @@ void fqueue_deinit(Fqueue *queue);
  */
 void fqueue_destroy(Fqueue *queue);
 
-// Get length of queue
-size_t fqueue_len(Fqueue *queue);
+// Get number of previously read bytes still loaded in queue
+size_t fqueue_prev(Fqueue *queue);
 
 // Get used space of queue
 size_t fqueue_used(Fqueue *queue);
@@ -86,10 +81,10 @@ int fqueue_dequeue(Fqueue *store, char *data, size_t size);
 // Dequeue a single byte from store->bytes
 int fqueue_dequeuec(Fqueue *store, char *cptr);
 
-// Enqueue MAX_BLOCK_SIZE bytes from attached file into store->bytes
+// Enqueue size bytes from attached file into store->bytes
 int fqueue_fenqueue(Fqueue *store, size_t size);
 
-// Dequeue MAX_BLOCK_SIZE bytes in store->bytes to a file
+// Dequeue size bytes in store->bytes to a file
 int fqueue_fdequeue(Fqueue *store, size_t size);
 
 /* 

@@ -1,5 +1,9 @@
 #include "assert.h"
+#include "pointerarith.h"
+
 #include "vpool.h"
+#include "varena.h"
+#include "varena_priv.h"
 #include "vdll.h"
 #include "varray.h"
 #include "vstack.h"
@@ -30,6 +34,83 @@ int deinit_long(void *ptr){
 
     long *long_ptr = ptr;
     *long_ptr = 0;
+    return 0;
+}
+
+int varena_test(void) {
+    #define FIRST_FRAME_SIZE (0x04)
+    #define SECOND_FRAME_SIZE (0x04)
+    #define THIRD_FRAME_SIZE (0x10)
+    #define A_CONSTANT (0x01234567)
+    #define B_CONSTANT (0x89ABCDEF)
+    #define C_CONSTANT (0x00112233)
+    #define D_CONSTANT (0x44556677)
+    #define E_CONSTANT (0x8899AABB)
+    #define F_CONSTANT (0xCCDDEEFF)
+
+    int32_t *a, *b, *c, *d, *e, *f;
+    Varena *arena = varena_create(999);
+    assert(arena != NULL);
+    assert(varena_arena_used(arena) == 0);
+    assert(varena_arena_unused(arena) == 999);
+    assert(varena_arena_cap(arena) == 999);
+
+    assert(varena_claim(&arena, FIRST_FRAME_SIZE) == 0);
+    assert(varena_frame_used(arena) >= 0);
+    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    a = varena_alloc(&arena, sizeof(int32_t));
+    assert(a != NULL);
+    assert(varena_frame_used(arena) >= FIRST_FRAME_SIZE);
+    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    assert((void*) a < pointer_literal_addition(arena->bytes, arena->bottom));
+    *a = A_CONSTANT;
+
+    assert(varena_claim(&arena, SECOND_FRAME_SIZE) == 0);
+    assert(varena_frame_used(arena) >= 0);
+    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    b = varena_alloc(&arena, sizeof(int32_t));
+    assert(b != NULL);
+    assert(varena_frame_used(arena) >= SECOND_FRAME_SIZE);
+    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    assert((void*) b < pointer_literal_addition(arena->bytes, arena->bottom));
+    *b = B_CONSTANT;
+
+    assert(varena_claim(&arena, THIRD_FRAME_SIZE) == 0);
+    assert(varena_frame_used(arena) >= 0);
+    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    c = varena_alloc(&arena, sizeof(int32_t));
+    *c = C_CONSTANT;
+    d = varena_alloc(&arena, sizeof(int32_t));
+    *d = D_CONSTANT;
+    e = varena_alloc(&arena, sizeof(int32_t));
+    *e = E_CONSTANT;
+    f = varena_alloc(&arena, sizeof(int32_t));
+    *f = F_CONSTANT;
+    assert(varena_frame_used(arena) >= THIRD_FRAME_SIZE);
+    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+
+    assert(c != NULL);
+    assert(*c = C_CONSTANT);
+    assert(d != NULL);
+    assert(*d = D_CONSTANT);
+    assert(e != NULL);
+    assert(*e = E_CONSTANT);
+    assert(f != NULL);
+    assert(*f = F_CONSTANT);
+    assert((void*) c < pointer_literal_addition(arena->bytes, arena->bottom));
+    assert((void*) f < pointer_literal_addition(arena->bytes, arena->bottom));
+    assert(varena_arena_used(arena) >= FIRST_FRAME_SIZE + SECOND_FRAME_SIZE + THIRD_FRAME_SIZE);
+    assert(varena_arena_unused(arena) != 0);
+    assert(varena_arena_cap(arena) == 999);
+    assert(varena_disclaim(&arena) == 0);
+
+    assert(*b = B_CONSTANT);
+    assert(varena_disclaim(&arena) == 0);
+
+    assert(*a = A_CONSTANT);
+    assert(varena_disclaim(&arena) == 0);
+
+    varena_destroy(&arena);
     return 0;
 }
 
@@ -279,12 +360,14 @@ int fqueue_test(void){
 
     // Enqueue / Dequeue test
     char *dequeue_text = "testing dequeue\n";
-    int dequeue_text_len = strlen(dequeue_text);
+    size_t dequeue_text_len = strlen(dequeue_text);
     char dequeue_text_check[999] = "";
     assert(fqueue_enqueue(in, dequeue_text, dequeue_text_len) == 0);
-    assert(fqueue_dequeue(in, dequeue_text_check, fqueue_len(in)) == 0);
+    assert(fqueue_dequeue(in, dequeue_text_check, fqueue_used(in)) == 0);
     assert(!strcmp(dequeue_text, dequeue_text_check));
     // now that all text content in the fqueue in has been consumed fold down
+    assert(fqueue_prev(in) == dequeue_text_len);
+    assert(fqueue_used(in) == 0);
     assert(in->readCursor > 0);
     assert(in->writeCursor > 0);
     assert(fqueue_fold_down(in) == 0);
@@ -293,24 +376,24 @@ int fqueue_test(void){
 
     // Exchange / Rewind_Read_Cursor test
     char *exchange_text = "testing exchange\n";
-    int exchange_text_len = strlen(exchange_text);
+    size_t exchange_text_len = strlen(exchange_text);
     char exchange_text_check[999] = "";
     assert(fqueue_enqueue(in, exchange_text, exchange_text_len) == 0);
-    assert(fqueue_exchange(in, out, fqueue_len(in)) == 0);
-    assert(fqueue_dequeue(out, exchange_text_check, fqueue_len(out)) == 0);
+    assert(fqueue_exchange(in, out, fqueue_used(in)) == 0);
+    assert(fqueue_dequeue(out, exchange_text_check, fqueue_used(out)) == 0);
     assert(!strcmp(exchange_text, exchange_text_check));
     assert(fqueue_rewind_read_cursor(in, exchange_text_len) == 0);
-    assert(fqueue_exchange(in, out, fqueue_len(in)) == 0);
-    assert(fqueue_dequeue(out, exchange_text_check, fqueue_len(out)) == 0);
+    assert(fqueue_exchange(in, out, fqueue_used(in)) == 0);
+    assert(fqueue_dequeue(out, exchange_text_check, fqueue_used(out)) == 0);
     assert(fqueue_fold_down(in) == 0);
     assert(fqueue_fold_down(out) == 0);
 
     // Rewind_Write_Cursor test
     char *rewind_text = "123456";
-    int rewind_text_len = 6;
+    size_t rewind_text_len = 6;
     char *rewind_text_partial = "123";
     char rewind_text_check[999] = "";
-    int rewind_text_partial_len = 3;
+    size_t rewind_text_partial_len = 3;
     assert(fqueue_enqueue(in, rewind_text, rewind_text_len) == 0);
     assert(fqueue_rewind_write_cursor(in, rewind_text_len - rewind_text_partial_len) == 0);
     assert(fqueue_dequeue(in, rewind_text_check, rewind_text_partial_len) == 0);
@@ -318,10 +401,10 @@ int fqueue_test(void){
     assert(fqueue_fold_down(in) == 0);
 
     // Fenqueue / Fdequeue test
-    int fenqueue_text_len = 18;
+    size_t fenqueue_text_len = 18;
     assert(fqueue_fenqueue(in, fenqueue_text_len) == 0);
     assert(fqueue_exchange(in, out, fenqueue_text_len) == 0);
-    assert(fqueue_fdequeue(out, fqueue_len(out)) == 0);
+    assert(fqueue_fdequeue(out, fqueue_used(out)) == 0);
 
     fqueue_destroy(in);
     fqueue_destroy(out);
@@ -332,12 +415,16 @@ int main(void){
     seed = time(NULL);
     printf("seed is %i\n", seed);
     srand(seed);
+
+    varena_test();
     vpool_test();
+
     vdll_test();
     varray_test();
     vstack_test();
     vqueue_test_nooverwrite();
     vqueue_test_overwrite();
     vht_test();
+
     fqueue_test();
 }

@@ -1,16 +1,20 @@
 # Some useful C files
 **Supports C11 or later**
 
+# General purpose allocators
+* Arenas.
+* Pools.
 
-# Data structures that function for all types
-* Pool allocator.
-* Doubly linked list.
+# General purpose data structures that function for all types
 * Dynamic Length Array.
 * Stack.
 * Queue.
 * Ring Buffer (Queue data structure with overwrite enabled).
-* Hashmap -- build using two parallel varray.
-* File Buffered Queue -- Already exists, organize.
+* Doubly linked list.
+* Hashmap -- built using two parallel varray.
+
+# FILE I/O
+* File Buffered Queue
 
 # Random
 * Good version of cstrncpy.
