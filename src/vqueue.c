@@ -1,6 +1,6 @@
-#include "vqueue.h"
-#include "vqueue_priv.h"
-#include "pointerarith.h"
+#include <vqueue.h>
+#include <vqueue_priv.h>
+#include <pointerarith.h>
 
 #include <stddef.h>
 #include <stdbool.h>

@@ -1,6 +1,6 @@
-#include "vdll.h"
-#include "vdll_priv.h"
-#include "pointerarith.h"
+#include <vdll.h>
+#include <vdll_priv.h>
+#include <pointerarith.h>
 
 #include <stddef.h>
 #include <stdlib.h>

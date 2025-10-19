@@ -1,6 +1,6 @@
-#include "varena.h"
-#include "varena_priv.h"
-#include "pointerarith.h"
+#include <varena.h>
+#include <varena_priv.h>
+#include <pointerarith.h>
 
 #include <stdlib.h>
 #include <string.h>

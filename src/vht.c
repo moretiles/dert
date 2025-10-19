@@ -1,25 +1,37 @@
-#include "vht.h"
-#include "vht_priv.h"
-#include "shorttype.h"
-#include "pointerarith.h"
-#include "assert.h"
+// all from header/
+#include <vht.h>
+#include <vht_priv.h>
+#include <shorttype.h>
+#include <pointerarith.h>
 
-#include "SipHash/siphash.h"
+// all from SipHash/
+#include <siphash.h>
 
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/random.h>
 
 // Initialize with dummy value of 0 that will be overwritten
-u128 vht_hash_salt = 0;
+uint8_t vht_hash_salt[VHT_HASH_SALT_LEN_EXPECTED] = { 0 };
 
 u64 vht_hash_calc(const char *data, size_t len){
+    _Static_assert(VHT_HASH_SALT_LEN_EXPECTED == 16, "Error: Macro defined constant VHT_HASH_SALT_LEN_EXPECTED is not 16 bytes in length, unable to generate proper key for siphash.");
+
+    uint8_t zero[VHT_HASH_SALT_LEN_EXPECTED] = { 0 };
+    uint8_t salt[VHT_HASH_SALT_LEN_EXPECTED];
     u64 hash;
 
-    // Since we only care about getting random data then data race with multiple threads overwriting is no issue
-    while(vht_hash_salt == 0){
-        getrandom(&vht_hash_salt, VHT_HASH_SALT_LEN_EXPECTED, 0);
+    if(!memcmp(vht_hash_salt, zero, VHT_HASH_SALT_LEN_EXPECTED)){
+        getrandom(salt, VHT_HASH_SALT_LEN_EXPECTED, 0);
+
+        /* 
+         * two atomic-compare-exchange calls used as compilers dislike with 128 bit integers.
+         * No problem. We just do two atomic-compare-exchange on 64 bit integers.
+         */
+        __atomic_compare_exchange((uint64_t*) &(vht_hash_salt[0]), (uint64_t*)&(zero[0]), (uint64_t*) &(salt[0]), false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+        __atomic_compare_exchange((uint64_t*) &(vht_hash_salt[8]), (uint64_t*)&(zero[8]), (uint64_t*) &(salt[8]), false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     }
 
     siphash(data, len, &vht_hash_salt, (uint8_t*) &hash, 64 / 8);
