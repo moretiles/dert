@@ -7,7 +7,7 @@ typedef struct varray {
     // size of individual elements
     size_t elem_size;
 
-    // number of elements on the stack
+    // number of elements the varray currently holds
     size_t stored;
 
     // total number of elements the Varray can (currently) support
@@ -42,11 +42,14 @@ void *varray_get_direct(Varray *array, size_t pos);
 // Copies the element at src to pos of array.
 int varray_set(Varray *array, size_t pos, void *src);
 
-// Append increase new elements to the end of the Varray.
-int varray_grow(Varray *array, size_t increase);
+// Resize varray (does not reallocate memory)
+int varray_resize(Varray *array, size_t new_size);
 
-// Remove decreate existing elements from the end of the Varray.
-int varray_shrink(Varray *array, size_t decrease);
+// Reallocate memory required for varray (does reallocate memory)
+int varray_realloc(Varray *array, size_t new_size);
 
 // Provide the current number of positions at which elements can be stored.
 size_t varray_len(Varray *array);
+
+// Provide the cap for number of elements that can currently be stored without resizing.
+size_t varray_cap(Varray *array);

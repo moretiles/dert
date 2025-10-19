@@ -2,76 +2,63 @@
 #include "vht_priv.h"
 #include "shorttype.h"
 #include "pointerarith.h"
+#include "assert.h"
+
+#include "SipHash/siphash.h"
 
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
 
-/*
-typedef struct vht {
-    Varray *keys;
-    Varray *vals;
-    //also need functions
-} Vht;
-*/
+// Initialize with dummy value of 0 that will be overwritten
+u128 vht_hash_salt = 0;
 
-u64 fnv(const char *data, size_t len){
-    u128 hash = FNV_OFFSET_BASIS_64;
-    u64 tmp = 0;
-    size_t i = 0;
+u64 vht_hash_calc(const char *data, size_t len){
+    u64 hash;
 
-    if (data == NULL || len == 0) {
-        return hash;
+    // Since we only care about getting random data then data race with multiple threads overwriting is no issue
+    while(vht_hash_salt == 0){
+        getrandom(&vht_hash_salt, VHT_HASH_SALT_LEN_EXPECTED, 0);
     }
 
-    // use eight byte chunks
-	for(i = 0; i < (len / 8); i++){
-        hash *= FNV_PRIME_64;
-        hash ^= data[i * 8];
-	}
-
-    // handle remaining data
-    if(len != 0){
-        memcpy(&tmp, &(data[i * 8]), len % 8);
-        hash *= FNV_PRIME_64;
-        hash ^= tmp;
-    }
+    siphash(data, len, &vht_hash_salt, (uint8_t*) &hash, 64 / 8);
 
     return hash;
 }
 
-int fnv_hash(Vht *table, const char *key, size_t len, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val){
+int vht_hash_start(Vht *table, const char *key, size_t len, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val){
     if(table == NULL || key == NULL || offset == NULL || iterate == NULL || table_bf == NULL || table_key == NULL || table_val == NULL){
         return 1;
     }
 
     // offset gets low bits, iterate gets high bits
-    u64 hash = fnv(key, len);
+    u64 hash = vht_hash_calc(key, len);
     *offset = hash >> 0;
     *iterate = hash >> 32;
 
     // iterate must be odd otherwise may not reach all indices
     *iterate |= 0x1;
 
-    *table_bf = fnv_bf(table, *offset);
-    *table_key = fnv_key(table, *offset);
-    *table_val = fnv_val(table, *offset);
+    *table_bf = vht_hash_bf(table, *offset);
+    *table_key = vht_hash_key(table, *offset);
+    *table_val = vht_hash_val(table, *offset);
     if(table_bf == NULL || table_key == NULL || table_val == NULL){
         return 2;
     }
     return 0;
 }
 
-int fnv_next(Vht *table, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val){
+int vht_hash_next(Vht *table, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val){
     if(table == NULL || offset == NULL || iterate == NULL || table_bf == NULL || table_key == NULL || table_val == NULL){
         return 1;
     }
 
     *offset += *iterate;
 
-    *table_bf = fnv_bf(table, *offset);
-    *table_key = fnv_key(table, *offset);
-    *table_val = fnv_val(table, *offset);
+    *table_bf = vht_hash_bf(table, *offset);
+    *table_key = vht_hash_key(table, *offset);
+    *table_val = vht_hash_val(table, *offset);
     if(table_bf == NULL || table_key == NULL || table_val == NULL){
         return 2;
     }
@@ -79,7 +66,7 @@ int fnv_next(Vht *table, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf
     return 0;
 }
 
-struct vht_key_bf *fnv_bf(Vht *table, u32 offset){
+struct vht_key_bf *vht_hash_bf(Vht *table, u32 offset){
     struct vht_key_bf *bf;
     if(table == NULL){
         return NULL;
@@ -89,13 +76,13 @@ struct vht_key_bf *fnv_bf(Vht *table, u32 offset){
     return bf;
 }
 
-void *fnv_key(Vht *table, u32 offset){
+void *vht_hash_key(Vht *table, u32 offset){
     void *key;
     if(table == NULL){
         return NULL;
     }
 
-    key = fnv_bf(table, offset);
+    key = vht_hash_bf(table, offset);
     if(key == NULL){
         return NULL;
     }
@@ -103,7 +90,7 @@ void *fnv_key(Vht *table, u32 offset){
     return key;
 }
 
-void *fnv_val(Vht *table, u32 offset){
+void *vht_hash_val(Vht *table, u32 offset){
     void *val;
     if(table == NULL){
         return NULL;
@@ -211,7 +198,7 @@ void *vht_get_direct(Vht *table, void *key){
     }
 
     remaining_guesses = table->cap;
-    if(fnv_hash(table, key, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
+    if(vht_hash_start(table, key, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
         return NULL;
     }
 
@@ -220,7 +207,7 @@ void *vht_get_direct(Vht *table, void *key){
             return table_val;
         }
         remaining_guesses--;
-        if(fnv_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
+        if(vht_hash_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
             return NULL;
         }
     }
@@ -242,7 +229,7 @@ int vht_set(Vht *table, void *key, void *src){
     }
 
     remaining_guesses = table->cap;
-    if(fnv_hash(table, key, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
+    if(vht_hash_start(table, key, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
         return 2;
     }
 
@@ -260,7 +247,7 @@ int vht_set(Vht *table, void *key, void *src){
         }
 
         remaining_guesses--;
-        if(fnv_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
+        if(vht_hash_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
             return 4;
         }
     }
@@ -278,7 +265,7 @@ int vht_del(Vht *table, void *key){
     }
 
     remaining_guesses = table->cap;
-    if(fnv_hash(table, key, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
+    if(vht_hash_start(table, key, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
         return 2;
     }
 
@@ -291,7 +278,7 @@ int vht_del(Vht *table, void *key){
             return 0;
         }
         remaining_guesses--;
-        if(fnv_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
+        if(vht_hash_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
             return 3;
         }
     }
@@ -319,12 +306,12 @@ int vht_double(Vht *table){
     }
 
     remaining_positions = vht_cap(table);
-    if(fnv_hash(table, random_sequence, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
+    if(vht_hash_start(table, random_sequence, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
         return 4;
     }
     free(random_sequence);
     while(remaining_positions-- > 0){
-        if(fnv_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
+        if(vht_hash_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0){
             return 4;
         }
 

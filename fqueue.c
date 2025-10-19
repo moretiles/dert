@@ -37,7 +37,7 @@ int fqueue_init(Fqueue *queue, size_t num_bytes, FILE *file){
         return 1;
     }
 
-    bytes = calloc(sizeof(char), num_bytes);
+    bytes = calloc(num_bytes, sizeof(char));
     if(bytes == NULL){
         return 2;
     }

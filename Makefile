@@ -17,11 +17,10 @@ clean:
 
 
 
-
-## individual recipes
-libdert.a: vstack.o vqueue.o vdll.o varena.o vpool.o varray.o vht.o fqueue.o cstring.o pointerarith.o
+libdert.a: vstack.o vqueue.o vdll.o varena.o vpool.o varray.o vht.o fqueue.o cstring.o pointerarith.o siphash.o
 	ar rcs libdert.a *.o
 
+## individual recipes
 vstack.o: vstack.c vstack.h
 	${CC} ${OPTIMIZE} ${CFLAGS} vstack.c -c -o vstack.o
 
@@ -52,16 +51,20 @@ cstring.o: cstring.c cstring.h
 pointerarith.o: pointerarith.c pointerarith.h
 	${CC} ${OPTIMIZE} ${CFLAGS} pointerarith.c -c -o pointerarith.o
 
+## dependency recipes
+siphash.o: SipHash/siphash.c SipHash/siphash.h
+	${CC} ${OPTIMIZE} ${CFLAGS} SipHash/siphash.c -c -o siphash.o
+
 ## tests and housekeeping
 .PHONY: test
 test:
-	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vstack.c vqueue.c vdll.c varray.c varena.c vpool.c vht.c fqueue.c test.c pointerarith.c -o test
+	${CC} ${CFLAGS} ${DEBUG} -fsanitize=address vstack.c vqueue.c vdll.c varray.c varena.c vpool.c SipHash/siphash.c vht.c fqueue.c test.c pointerarith.c -o test
 
 .PHONY: tags
 tags:
 	ctags -R .
 
-# kind of a misnomer to test the performance of a "test build" but it's comparative data
+# kind of a misnomer to test the performance of a "test build" but produces comparative data
 performance: test
 	./test
 	gprof ./test gmon.out

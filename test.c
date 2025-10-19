@@ -56,28 +56,28 @@ int varena_test(void) {
     assert(varena_arena_cap(arena) == 999);
 
     assert(varena_claim(&arena, FIRST_FRAME_SIZE) == 0);
-    assert(varena_frame_used(arena) >= 0);
-    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    assert(varena_frame_used(arena) == 0);
+    assert(varena_frame_unused(arena) >= FIRST_FRAME_SIZE);
     a = varena_alloc(&arena, sizeof(int32_t));
     assert(a != NULL);
     assert(varena_frame_used(arena) >= FIRST_FRAME_SIZE);
-    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    assert(varena_frame_unused(arena) == 0);
     assert((void*) a < pointer_literal_addition(arena->bytes, arena->bottom));
     *a = A_CONSTANT;
 
     assert(varena_claim(&arena, SECOND_FRAME_SIZE) == 0);
-    assert(varena_frame_used(arena) >= 0);
-    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    assert(varena_frame_used(arena) == 0);
+    assert(varena_frame_unused(arena) >= SECOND_FRAME_SIZE);
     b = varena_alloc(&arena, sizeof(int32_t));
     assert(b != NULL);
     assert(varena_frame_used(arena) >= SECOND_FRAME_SIZE);
-    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    assert(varena_frame_unused(arena) == 0);
     assert((void*) b < pointer_literal_addition(arena->bytes, arena->bottom));
     *b = B_CONSTANT;
 
     assert(varena_claim(&arena, THIRD_FRAME_SIZE) == 0);
-    assert(varena_frame_used(arena) >= 0);
-    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    assert(varena_frame_used(arena) == 0);
+    assert(varena_frame_unused(arena) >= THIRD_FRAME_SIZE);
     c = varena_alloc(&arena, sizeof(int32_t));
     *c = C_CONSTANT;
     d = varena_alloc(&arena, sizeof(int32_t));
@@ -87,7 +87,7 @@ int varena_test(void) {
     f = varena_alloc(&arena, sizeof(int32_t));
     *f = F_CONSTANT;
     assert(varena_frame_used(arena) >= THIRD_FRAME_SIZE);
-    assert(varena_frame_unused(arena) >= sizeof(struct varena_frame));
+    assert(varena_frame_unused(arena) == 0);
 
     assert(c != NULL);
     assert(*c = C_CONSTANT);
@@ -184,10 +184,14 @@ int vdll_test(void){
 int varray_test(void){
     Varray *array = varray_create(sizeof(long));
     assert(array != NULL);
-    assert(varray_grow(array, 4) == 0);
+    assert(varray_len(array) == 0);
+    assert(varray_cap(array) == 0);
+    assert(varray_realloc(array, 4) == 0);
     assert(varray_len(array) == 4);
-    assert(varray_grow(array, 1) == 0);
-    assert(varray_len(array) == (4 + 1));
+    assert(varray_cap(array) >= 4);
+    assert(varray_realloc(array, 5) == 0);
+    assert(varray_len(array) == 5);
+    assert(varray_cap(array) >= 5);
 
     long a = 1, b = 2, c = 3;
     assert(varray_set(array, 0, &a) == 0);
@@ -198,12 +202,30 @@ int varray_test(void){
     assert(varray_get(array, 0, &a_test) == 0);
     assert(varray_get(array, 1, &b_test) == 0);
     assert(varray_get(array, 2, &c_test) == 0);
-
     assert(a_test == a);
     assert(b_test == b);
     assert(c_test == c);
 
-    assert(varray_shrink(array, 1) == 0);
+    assert(varray_realloc(array, 4) == 0);
+    assert(varray_len(array) == 4);
+    assert(varray_cap(array) >= 4);
+
+    assert(varray_resize(array, 0) == 0);
+    assert(varray_len(array) == 0);
+    assert(varray_cap(array) >= 3);
+    assert(varray_get(array, 0, &a_test) != 0);
+    assert(varray_get(array, 1, &b_test) != 0);
+    assert(varray_get(array, 2, &c_test) != 0);
+    assert(varray_resize(array, 3) == 0);
+    assert(varray_len(array) == 3);
+    assert(varray_cap(array) >= 3);
+    assert(varray_get(array, 0, &a_test) == 0);
+    assert(varray_get(array, 1, &b_test) == 0);
+    assert(varray_get(array, 2, &c_test) == 0);
+    assert(a_test == a);
+    assert(b_test == b);
+    assert(c_test == c);
+
     varray_destroy(array);
 
     return 0;

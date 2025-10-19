@@ -19,7 +19,7 @@ Varena *varena_create(size_t num_bytes){
         return NULL;
     }
 
-    bytes = calloc(sizeof(char), num_bytes);
+    bytes = calloc(num_bytes, sizeof(char));
     if(bytes == NULL){
         free(ret);
         return NULL;
@@ -80,7 +80,7 @@ size_t varena_frame_used(Varena *arena){
     }
 
     frame = varena_frame_top(arena);
-    return arena->top - frame->top;
+    return arena->top - frame->bottom;
 }
 
 size_t varena_frame_unused(Varena *arena){
@@ -88,7 +88,8 @@ size_t varena_frame_unused(Varena *arena){
         return 0;
     }
 
-    return arena->bottom - arena->top;
+    // one varena_frame stored on each frame and should never be overwritten
+    return arena->bottom - sizeof(struct varena_frame) - arena->top;
 }
 
 struct varena_frame *varena_frame_top(Varena *arena){

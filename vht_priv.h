@@ -3,13 +3,16 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+// Expected length as key for siphash
+#define VHT_HASH_SALT_LEN_EXPECTED (128 / 8)
 // Used as default size for Vht.
 #define VHT_INITIAL_NUM_ELEMS (16)
 
-// Magic number used across iterations of the FNV hashing algorithm.
-#define FNV_PRIME_64 (1099511628091u)
-// Magic number used as basis for the FNV hashing algorithm.
-#define FNV_OFFSET_BASIS_64 (14695981039346656037u)
+/*
+ * Global variable present in vht.c
+ * Used as the "key" with siphash
+ */
+extern u128 vht_hash_salt;
 
 // Special secret bitfield placed before all keys stored in Vht
 struct vht_key_bf {
@@ -17,33 +20,32 @@ struct vht_key_bf {
     bool occupied : 1;
 };
 
-/*
- * Internal FNV hashing calculation
+/*                                                                                              * Internal FNV hashing calculation
  * Top 32 bits used to calculate iterate.
  * Bottom 32 bits used to calculate offset.
  */
-u64 fnv(const char *data, size_t len);
+u64 vht_hash_calc(const char *data, size_t len);
 
 /*
  * Using the first len bytes of key calculate offset and iterate.
  * Then, find the vht_key_bf, key, and value at offset in table.
  */
-int fnv_hash(Vht *table, const char *key, size_t len, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val);
+int vht_hash_start(Vht *table, const char *key, size_t len, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val);
 
 /*
  * Apply an additional step of the FNV hashing calculation updating offset and iterate.
  * Get the vht_key_bf, key, and value at the offset in table.
  */
-int fnv_next(Vht *table, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val);
+int vht_hash_next(Vht *table, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val);
 
 // Get vht_key_bf at offset in table.
-struct vht_key_bf *fnv_bf(Vht *table, u32 offset);
+struct vht_key_bf *vht_hash_bf(Vht *table, u32 offset);
 
 // Get key at offset in table.
-void *fnv_key(Vht *table, u32 offset);
+void *vht_hash_key(Vht *table, u32 offset);
 
 // Get val at offset in table.
-void *fnv_val(Vht *table, u32 offset);
+void *vht_hash_val(Vht *table, u32 offset);
 
 // Grow size of Vht (by some amount).
 int vht_double(Vht *table_ptr);
