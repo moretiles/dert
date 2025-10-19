@@ -1,6 +1,6 @@
-#include "varray.h"
-#include "varray_priv.h"
-#include "pointerarith.h"
+#include <varray.h>
+#include <varray_priv.h>
+#include <pointerarith.h>
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -152,16 +152,13 @@ int varray_grow(Varray *array, size_t increase){
             new_cap <<= 1;
         }
 
-        void *new_elems = calloc(new_cap, array->elem_size);
+        void *new_elems = realloc(array->elems, new_cap * array->elem_size);
         if(new_elems == NULL){
             return 5;
         }
-
-        if(memcpy(new_elems, array->elems, array->cap * array->elem_size) != new_elems){
-            return 6;
-        }
-        free(array->elems);
         array->elems = new_elems;
+        memset(pointer_literal_addition(array->elems, array->cap * array->elem_size), 0, (new_cap - array->cap) * array->elem_size);
+
         array->stored += increase;
         array->cap = new_cap;
     }

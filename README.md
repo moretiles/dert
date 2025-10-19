@@ -1,5 +1,6 @@
 # Some useful C files
-**Supports C11 or later**
+* This is a personal library. There may be breaking changes to APIs at **any** time.
+* Supports C11 or later
 
 ## General purpose allocators
 * Arenas.
@@ -19,7 +20,6 @@
 ## Random
 * Good version of cstrncpy.
 * Short, portable names for fixed width signed integers, unsigned integers, and reals.
-* Assert macro to make debugging with assert statements easier for Clang and MSVC.
 * Function for literal addition on top of pointer.
 
 # How to use
@@ -36,8 +36,8 @@ make
 ```
 
 # TODO:
-* Remove mutex from pool. In this case syncronization of resources should be left to user.
+* Remove mutex from pool. In this case, syncronization of resources should be left to user.
 * Consider removing functions attached to pool.
-* Attach function to vht for selecting "key" from the pointed to key.
+* Attach function pointer to vht for producing "key" when evaluating the hash of a given key.
 * Standardize public API naming.
 * Standardize returned errors.

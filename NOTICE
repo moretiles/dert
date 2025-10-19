@@ -1,0 +1,4 @@
+Some C Files
+Copyright 2025 Moretiles
+
+This library uses Daniel J Bernstein's implementation of SipHash, provided under the APACHE-2.0 license, available to the public at https://github.com/veorq/SipHash.

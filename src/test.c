@@ -1,15 +1,15 @@
-#include "assert.h"
-#include "pointerarith.h"
+#include <assert.h>
+#include <pointerarith.h>
 
-#include "vpool.h"
-#include "varena.h"
-#include "varena_priv.h"
-#include "vdll.h"
-#include "varray.h"
-#include "vstack.h"
-#include "vqueue.h"
-#include "vht.h"
-#include "fqueue.h"
+#include <vpool.h>
+#include <varena.h>
+#include <varena_priv.h>
+#include <vdll.h>
+#include <varray.h>
+#include <vstack.h>
+#include <vqueue.h>
+#include <vht.h>
+#include <fqueue.h>
 
 #include <stdlib.h>
 #include <time.h>

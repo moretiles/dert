@@ -1,4 +1,4 @@
-#include "fqueue.h"
+#include <fqueue.h>
 
 #include <stdlib.h>
 

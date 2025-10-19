@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 // Expected length as key for siphash
-#define VHT_HASH_SALT_LEN_EXPECTED (128 / 8)
+#define VHT_HASH_SALT_LEN_EXPECTED (16)
 // Used as default size for Vht.
 #define VHT_INITIAL_NUM_ELEMS (16)
 
@@ -12,7 +12,7 @@
  * Global variable present in vht.c
  * Used as the "key" with siphash
  */
-extern u128 vht_hash_salt;
+extern uint8_t vht_hash_salt[VHT_HASH_SALT_LEN_EXPECTED];
 
 // Special secret bitfield placed before all keys stored in Vht
 struct vht_key_bf {
