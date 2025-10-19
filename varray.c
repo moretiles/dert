@@ -1,4 +1,5 @@
 #include "varray.h"
+#include "varray_priv.h"
 #include "pointerarith.h"
 
 #include <stddef.h>
@@ -102,6 +103,32 @@ int varray_set(Varray *array, size_t pos, void *src){
     return 0;
 }
 
+int varray_resize(Varray *array, size_t new_size){
+    if(new_size == array->stored){
+        return 0;
+    } else if(new_size > array->stored){
+        if(new_size > array->cap){
+            return varray_realloc(array, new_size);
+        } else {
+            array->stored = new_size;
+            return 0;
+        }
+    } else {
+        array->stored = new_size;
+        return 0;
+    }
+}
+
+int varray_realloc(Varray *array, size_t new_size){
+    if(new_size == array->cap){
+        return 0;
+    } else if(new_size > array->cap){
+        return varray_grow(array, new_size - array->cap);
+    } else {
+        return varray_shrink(array, array->cap - new_size);
+    }
+}
+
 int varray_grow(Varray *array, size_t increase){
     if(array == NULL){
         return 2;
@@ -120,7 +147,7 @@ int varray_grow(Varray *array, size_t increase){
         array->stored += increase;
         array->cap += increase;
     } else {
-        size_t new_cap = (array->cap << 1);
+        size_t new_cap = (array->cap + 1);
         while(new_cap < (array->cap + increase)){
             new_cap <<= 1;
         }
@@ -174,4 +201,12 @@ size_t varray_len(Varray *array){
     }
 
     return array->stored;
+}
+
+size_t varray_cap(Varray *array){
+    if(array == NULL){
+        return 0;
+    }
+
+    return array->cap;
 }
