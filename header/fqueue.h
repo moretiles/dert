@@ -1,8 +1,8 @@
 /*
- * queue.h -- header file that provides queue data structure to represent file
+ * fqueue.h -- Queue designed for simple file I/O
  *
- * dank_json - Another tool for working with JSON in C
- * https://github.com/moretiles/dank_json
+ * DERT - Miscellaneous Data Structures Library
+ * https://github.com/moretiles/dert
  * Project licensed under Apache-2.0 license
  */
 

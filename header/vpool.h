@@ -1,8 +1,8 @@
 /*
- * pool.h -- Vpool and Vpool_functions
+ * vpool.h -- Pool allocator for an arbitrary type
  *
- * c_misc - Some useful C files I wrote
- * https://github.com/moretiles/c_misc
+ * DERT - Miscellaneous Data Structures Library
+ * https://github.com/moretiles/dert
  * Project licensed under Apache-2.0 license
  */
 

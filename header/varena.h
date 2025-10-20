@@ -1,8 +1,8 @@
 /*
- * varena.h -- Varena and Varena_functions
+ * varena.h -- Arena allocating memory for any type
  *
- * c_misc - Some useful C files I wrote
- * https://github.com/moretiles/c_misc
+ * DERT - Miscellaneous Data Structures Library
+ * https://github.com/moretiles/dert
  * Project licensed under Apache-2.0 license
  */
 
