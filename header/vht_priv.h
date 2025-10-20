@@ -1,4 +1,12 @@
-#include "shorttype.h"
+/*
+ * vht_priv.h -- Hash table for an arbitrary key/value
+ *
+ * DERT - Miscellaneous Data Structures Library
+ * https://github.com/moretiles/dert
+ * Project licensed under Apache-2.0 license
+ */
+
+#include <shorttype.h>
 
 #include <stddef.h>
 #include <stdbool.h>

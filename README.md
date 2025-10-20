@@ -1,5 +1,6 @@
-# Some useful C files
-* This is a personal library. There may be breaking changes to APIs at **any** time.
+# Do Everything RighT
+* A collection of data structures that align with what I think is reasonable.
+* This is a personal library so there may be breaking changes to APIs at **any** time.
 * Supports C11 or later
 
 ## General purpose allocators

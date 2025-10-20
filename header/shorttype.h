@@ -1,8 +1,8 @@
 /*
- * misc.h -- Provide short, portable names for precisely sized types
+ * shorttype.h -- Short, portable names for several types
  *
- * Text EDitor
- * https://github.com/moretiles/ted
+ * DERT - Miscellaneous Data Structures Library
+ * https://github.com/moretiles/dert
  * Project licensed under Apache-2.0 license
  */
 
