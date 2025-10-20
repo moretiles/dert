@@ -1,3 +1,11 @@
+/*
+ * vpool_priv.h -- Pool allocator for an arbitrary type
+ *
+ * DERT - Miscellaneous Data Structures Library
+ * https://github.com/moretiles/dert
+ * Project licensed under Apache-2.0 license
+ */
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
