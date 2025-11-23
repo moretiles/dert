@@ -28,7 +28,7 @@ struct vht_key_bf {
     bool occupied : 1;
 };
 
-/*                                                                                              * Internal FNV hashing calculation
+/* Internal FNV hashing calculation
  * Top 32 bits used to calculate iterate.
  * Bottom 32 bits used to calculate offset.
  */

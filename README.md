@@ -18,6 +18,9 @@
 ## FILE I/O
 * File Buffered Queue
 
+## Multithreaded
+* Atomic queue.
+
 ## Random
 * Good version of cstrncpy.
 * Short, portable names for fixed width signed integers, unsigned integers, and reals.
