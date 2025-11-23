@@ -8,6 +8,7 @@
 #include <varray.h>
 #include <vstack.h>
 #include <vqueue.h>
+#include <aqueue.h>
 #include <vht.h>
 #include <fqueue.h>
 
@@ -17,8 +18,8 @@
 
 int seed;
 
-int init_long(void *ptr){
-    if(ptr == NULL){
+int init_long(void *ptr) {
+    if(ptr == NULL) {
         return 1;
     }
 
@@ -27,8 +28,8 @@ int init_long(void *ptr){
     return 0;
 }
 
-int deinit_long(void *ptr){
-    if(ptr == NULL){
+int deinit_long(void *ptr) {
+    if(ptr == NULL) {
         return 1;
     }
 
@@ -38,15 +39,15 @@ int deinit_long(void *ptr){
 }
 
 int varena_test(void) {
-    #define FIRST_FRAME_SIZE (0x04)
-    #define SECOND_FRAME_SIZE (0x04)
-    #define THIRD_FRAME_SIZE (0x10)
-    #define A_CONSTANT (0x01234567)
-    #define B_CONSTANT (0x89ABCDEF)
-    #define C_CONSTANT (0x00112233)
-    #define D_CONSTANT (0x44556677)
-    #define E_CONSTANT (0x8899AABB)
-    #define F_CONSTANT (0xCCDDEEFF)
+#define FIRST_FRAME_SIZE (0x04)
+#define SECOND_FRAME_SIZE (0x04)
+#define THIRD_FRAME_SIZE (0x10)
+#define A_CONSTANT (0x01234567)
+#define B_CONSTANT (0x89ABCDEF)
+#define C_CONSTANT (0x00112233)
+#define D_CONSTANT (0x44556677)
+#define E_CONSTANT (0x8899AABB)
+#define F_CONSTANT (0xCCDDEEFF)
 
     int32_t *a, *b, *c, *d, *e, *f;
     Varena *arena = varena_create(999);
@@ -114,7 +115,7 @@ int varena_test(void) {
     return 0;
 }
 
-int vpool_test(void){
+int vpool_test(void) {
     Vpool_functions long_functions;
     Vpool *longs;
 
@@ -148,27 +149,27 @@ int vpool_test(void){
     return 0;
 }
 
-int vdll_test(void){
+int vdll_test(void) {
     Vdll_functions functions = { .init = init_long, .deinit = deinit_long };
-    #define TEST_VDLL_ARRAY_LEN (99)
+#define TEST_VDLL_ARRAY_LEN (99)
     Vdll *dll = vdll_create(sizeof(long), &functions);
     assert(dll != NULL);
     assert(vdll_grow(dll, TEST_VDLL_ARRAY_LEN) == 0);
 
     long array[TEST_VDLL_ARRAY_LEN];
     long tmp;
-    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN; i++){
+    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN; i++) {
         array[i] = rand();
         assert(vdll_set(dll, i, &(array[i])) == 0);
     }
 
-    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 10; i++){
+    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 10; i++) {
         size_t pos = rand() % TEST_VDLL_ARRAY_LEN;
         array[pos] = rand();
         assert(vdll_set(dll, pos, &(array[pos])) == 0);
     }
 
-    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 100; i++){
+    for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 100; i++) {
         size_t pos = rand() % TEST_VDLL_ARRAY_LEN;
         assert(vdll_get(dll, pos, &tmp) == 0);
         assert(tmp == array[pos]);
@@ -181,7 +182,7 @@ int vdll_test(void){
     return 0;
 }
 
-int varray_test(void){
+int varray_test(void) {
     Varray *array = varray_create(sizeof(long));
     assert(array != NULL);
     assert(varray_len(array) == 0);
@@ -231,7 +232,7 @@ int varray_test(void){
     return 0;
 }
 
-int vstack_test(void){
+int vstack_test(void) {
     Vstack *stack = vstack_create(sizeof(long), 3);
     assert(stack != NULL);
     assert(vstack_len(stack) == 0);
@@ -257,11 +258,11 @@ int vstack_test(void){
     assert(vstack_len(stack) == 0);
     assert(vstack_cap(stack) == 3);
     assert(vstack_destroy(stack) == 0);
-    
+
     return 0;
 }
 
-int vqueue_test_nooverwrite(void){
+int vqueue_test_nooverwrite(void) {
     Vqueue *queue = vqueue_create(sizeof(long), 3);
     assert(queue != NULL);
     assert(vqueue_len(queue) == 0);
@@ -289,11 +290,11 @@ int vqueue_test_nooverwrite(void){
     assert(vqueue_len(queue) == 0);
     assert(vqueue_cap(queue) == 3);
     vqueue_destroy(queue);
-    
+
     return 0;
 }
 
-int vqueue_test_overwrite(void){
+int vqueue_test_overwrite(void) {
     Vqueue *queue = vqueue_create(sizeof(long), 3);
     assert(queue != NULL);
     assert(vqueue_len(queue) == 0);
@@ -340,32 +341,63 @@ int vqueue_test_overwrite(void){
     assert(vqueue_len(queue) == 0);
     assert(vqueue_cap(queue) == 3);
     vqueue_destroy(queue);
-    
+
     return 0;
 }
 
-int vht_test(void){
+int aqueue_test_nooverwrite(void) {
+    Aqueue *queue = aqueue_create(sizeof(long), 3);
+    assert(queue != NULL);
+    assert(aqueue_len(queue) == 0);
+    assert(aqueue_cap(queue) == 3);
+
+    long a = 1, b = 2, c = 3;
+    assert(aqueue_enqueue(queue, &a) == 0);
+    assert(aqueue_enqueue(queue, &b) == 0);
+    assert(aqueue_enqueue(queue, &c) == 0);
+    assert(aqueue_len(queue) == 3);
+    assert(aqueue_cap(queue) == 3);
+
+    long a_test, b_test, c_test;
+    assert(aqueue_front(queue, &a_test) == 0);
+    assert(a_test == a);
+    assert(aqueue_dequeue(queue, &a_test) == 0);
+    assert(aqueue_dequeue(queue, &b_test) == 0);
+    assert(aqueue_dequeue(queue, &c_test) == 0);
+    assert(a_test == a);
+    assert(b_test == b);
+    assert(c_test == c);
+
+    assert(aqueue_len(queue) == 0);
+    assert(aqueue_cap(queue) == 3);
+    aqueue_destroy(queue);
+
+    return 0;
+}
+
+
+int vht_test(void) {
     Vht *table = vht_create(sizeof(long), sizeof(char));
     assert(table != NULL);
     assert(vht_len(table) == 0);
 
-    #define TEST_VHT_ARRAY_LEN (257)
+#define TEST_VHT_ARRAY_LEN (257)
     long keys[TEST_VHT_ARRAY_LEN];
     char vals[TEST_VHT_ARRAY_LEN];
     char ptrs[TEST_VHT_ARRAY_LEN];
     size_t i;
-    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
+    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++) {
         keys[i] = rand();
         vals[i] = rand();
     }
     assert(vht_get_direct(table, &(keys[0])) == NULL);
 
-    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
+    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++) {
         assert(vht_set(table, &(keys[i]), &(vals[i])) == 0);
     }
     assert(vht_len(table) == TEST_VHT_ARRAY_LEN);
 
-    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++){
+    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++) {
         assert(vht_get(table, &(keys[i]), &(ptrs[i])) == 0);
         assert(ptrs[i] == vals[i]);
     }
@@ -374,7 +406,7 @@ int vht_test(void){
     return 0;
 }
 
-int fqueue_test(void){
+int fqueue_test(void) {
     Fqueue *in = fqueue_create(999, "tests/fqueue_in.txt", "r");
     Fqueue *out = fqueue_create(999, "tests/fqueue_out.txt", "w");
     assert(in != NULL);
@@ -433,7 +465,7 @@ int fqueue_test(void){
     return 0;
 }
 
-int main(void){
+int main(void) {
     seed = time(NULL);
     printf("seed is %i\n", seed);
     srand(seed);
