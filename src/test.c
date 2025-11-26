@@ -5,16 +5,20 @@
 #include <varena.h>
 #include <varena_priv.h>
 #include <vdll.h>
+#include <tbuf.h>
 #include <varray.h>
 #include <vstack.h>
 #include <vqueue.h>
 #include <aqueue.h>
+#include <mpscqueue.h>
+#include <tpoolrr.h>
 #include <vht.h>
 #include <fqueue.h>
 
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
+#include <unistd.h>
 
 int seed;
 
@@ -178,6 +182,40 @@ int vdll_test(void) {
     assert(vdll_len(dll) == TEST_VDLL_ARRAY_LEN);
     assert(vdll_shrink(dll, 1 + (TEST_VDLL_ARRAY_LEN / 2)) == 0);
     vdll_destroy(dll);
+
+    return 0;
+}
+
+int tbuf_test(void) {
+    char *a, *b;
+
+    Tbuf *twin = tbuf_create(99);
+    assert(twin != NULL);
+    assert(tbuf_cap(twin) == 99);
+    assert(tbuf_claim(twin, &a, &b) == 0);
+    assert(a != NULL);
+    assert(b != NULL);
+    assert(strcpy(a, "123") != NULL);
+    assert(strcpy(b, "456") != NULL);
+    assert(!strcmp(a, "123"));
+    assert(!strcmp(b, "456"));
+    assert(tbuf_swap(twin) == 0);
+    assert(tbuf_claim(twin, &a, &b) == 0);
+    assert(a != NULL);
+    assert(b != NULL);
+    assert(!strcmp(a, "456"));
+    assert(!strcmp(b, "123"));
+    assert(tbuf_exchange(twin, &a, &b) == 0);
+    assert(a != NULL);
+    assert(b != NULL);
+    assert(!strcmp(a, "456"));
+    assert(!strcmp(b, "123"));
+    assert(tbuf_exchange(twin, &a, &b) == 0);
+    assert(a != NULL);
+    assert(b != NULL);
+    assert(!strcmp(a, "123"));
+    assert(!strcmp(b, "456"));
+    tbuf_destroy(twin);
 
     return 0;
 }
@@ -375,6 +413,163 @@ int aqueue_test_nooverwrite(void) {
     return 0;
 }
 
+int mpscqueue_test_nooverwrite(void) {
+    Mpscqueue *queue = mpscqueue_create(sizeof(long), 3);
+    assert(queue != NULL);
+    assert(mpscqueue_len(queue) == 0);
+    assert(mpscqueue_cap(queue) == 3);
+
+    long a = 1, b = 2, c = 3;
+    assert(mpscqueue_enqueue(queue, &a) == 0);
+    assert(mpscqueue_enqueue(queue, &b) == 0);
+    assert(mpscqueue_enqueue(queue, &c) == 0);
+    assert(mpscqueue_len(queue) == 3);
+    assert(mpscqueue_cap(queue) == 3);
+
+    long a_test, b_test, c_test;
+    assert(mpscqueue_front(queue, &a_test) == 0);
+    assert(a_test == a);
+    assert(mpscqueue_dequeue(queue, &a_test) == 0);
+    assert(mpscqueue_dequeue(queue, &b_test) == 0);
+    assert(mpscqueue_dequeue(queue, &c_test) == 0);
+    assert(a_test == a);
+    assert(b_test == b);
+    assert(c_test == c);
+
+    assert(mpscqueue_len(queue) == 0);
+    assert(mpscqueue_cap(queue) == 3);
+    mpscqueue_destroy(queue);
+
+    return 0;
+}
+
+struct tpoolrr_test_arg1 {
+    int *src;
+    int *dest;
+};
+
+void *tpoolrr_test_function1(void *varg) {
+    if(varg == NULL) {
+        return "bad!";
+    }
+
+    struct tpoolrr_test_arg1 *arg = (struct tpoolrr_test_arg1*) varg;
+    if(arg->src == NULL || arg->dest == NULL) {
+        return "bad!";
+    }
+
+    __atomic_store_n(arg->dest, *(arg->src), __ATOMIC_SEQ_CST);
+
+    return NULL;
+}
+
+struct tpoolrr_test_arg2 {
+    char *src;
+    char *dest;
+};
+
+void *tpoolrr_test_function2(void *varg) {
+    if(varg == NULL) {
+        return "bad!";
+    }
+
+    struct tpoolrr_test_arg2 *arg = (struct tpoolrr_test_arg2*) varg;
+    if(arg->src == NULL || arg->dest == NULL) {
+        return "bad!";
+    }
+
+    strcpy(arg->dest, arg->src);
+
+    return NULL;
+}
+
+void *tpoolrr_test_function3(void *varg) {
+    if(varg == NULL) {
+        return "bad!";
+    }
+
+    int *arg = (int*) varg;
+
+    __atomic_fetch_add(arg, 1, __ATOMIC_SEQ_CST);
+
+    return NULL;
+}
+
+int tpoolrr_test(void) {
+    Tpoolrr *pool;
+    printf("Allocating %lu bytes\n", tpoolrr_advise(100, 100));
+
+    {
+#define TPOOLRR_TEST_FUNCTION1_THREADS (5)
+#define TPOOLRR_TEST_FUNCTION1_JOBS (3)
+        pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION1_THREADS, TPOOLRR_TEST_FUNCTION1_JOBS);
+        assert(pool != NULL);
+        int src1 = 1, src2 = 2, src3 = 3;
+        int dest1 = 0, dest2 = 0, dest3 = 0;
+        struct tpoolrr_test_arg1 arg1 = {(int*) &src1, (int*) &dest1};
+        struct tpoolrr_test_arg1 arg2 = {(int*) &src2, (int*) &dest2};
+        struct tpoolrr_test_arg1 arg3 = {(int*) &src3, (int*) &dest3};
+        assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg1, 0) == 0);
+        assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg2, 0) == 0);
+        assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg3, 0) == 0);
+        printf("JOINING\n");
+        assert(tpoolrr_join(pool) == 0);
+        printf("JOINED\n");
+        printf("%i == %i\n", src1, dest1);
+        printf("queues: %lu, %lu, %lu\n",
+               aqueue_len(&(pool->job_queues[0])),
+               aqueue_len(&(pool->job_queues[1])),
+               aqueue_len(&(pool->job_queues[2])));
+        assert(src1 == dest1);
+        assert(src2 == dest2);
+        assert(src3 == dest3);
+        tpoolrr_destroy(pool);
+    }
+
+    {
+#define TPOOLRR_TEST_FUNCTION2_THREADS (5)
+#define TPOOLRR_TEST_FUNCTION2_JOBS (3)
+        pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION2_THREADS, TPOOLRR_TEST_FUNCTION2_JOBS);
+        assert(pool != NULL);
+        char src1[999] = "foo", src2[999] = "bar", src3[999] = "baz";
+        char dest1[999], dest2[999], dest3[999];
+        struct tpoolrr_test_arg2 arg1 = {(char*) src1, (char*) dest1};
+        struct tpoolrr_test_arg2 arg2 = {(char*) src2, (char*) dest2};
+        struct tpoolrr_test_arg2 arg3 = {(char*) src3, (char*) dest3};
+        Tpoolrr_fn functions[] = {tpoolrr_test_function2, tpoolrr_test_function2, tpoolrr_test_function2};
+        void *args[] = {(void *) &arg1, (void *) &arg2, (void *) &arg3};
+        assert(tpoolrr_jobs_addall(pool, 3, functions, args, 0) == 0);
+        printf("JOINING\n");
+        assert(tpoolrr_join(pool) == 0);
+        printf("JOINED\n");
+        printf("%s == %s\n", src1, dest1);
+        printf("queues: %lu, %lu, %lu\n",
+               aqueue_len(&(pool->job_queues[0])),
+               aqueue_len(&(pool->job_queues[1])),
+               aqueue_len(&(pool->job_queues[2])));
+        assert(!strcmp(src1, dest1));
+        assert(!strcmp(src2, dest2));
+        assert(!strcmp(src3, dest3));
+        tpoolrr_destroy(pool);
+    }
+
+    {
+#define TPOOLRR_TEST_FUNCTION3_THREADS (25)
+#define TPOOLRR_TEST_FUNCTION3_JOBS (25)
+        pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION3_THREADS, TPOOLRR_TEST_FUNCTION3_JOBS);
+        assert(pool != NULL);
+        int counter = 0;
+        assert(tpoolrr_jobs_assign(pool, tpoolrr_test_function3, &counter, 0) == 0);
+        printf("JOINING\n");
+        assert(tpoolrr_join(pool) == 0);
+        printf("JOINED\n");
+        printf("counter: %i\n", counter);
+        assert(counter == TPOOLRR_TEST_FUNCTION3_THREADS);
+        tpoolrr_destroy(pool);
+    }
+
+    return 0;
+}
 
 int vht_test(void) {
     Vht *table = vht_create(sizeof(long), sizeof(char));
@@ -472,13 +667,16 @@ int main(void) {
 
     varena_test();
     vpool_test();
-
     vdll_test();
+    tbuf_test();
     varray_test();
     vstack_test();
     vqueue_test_nooverwrite();
     vqueue_test_overwrite();
+    aqueue_test_nooverwrite();
+    mpscqueue_test_nooverwrite();
     vht_test();
+    tpoolrr_test();
 
     fqueue_test();
 }
