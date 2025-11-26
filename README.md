@@ -14,12 +14,15 @@
 * Ring Buffer (Queue data structure with overwrite enabled).
 * Doubly linked list.
 * Hashmap -- built using two parallel varray.
+* Twin Buffers.
 
 ## FILE I/O
-* File Buffered Queue
+* File Buffered Queue.
 
 ## Multithreaded
-* Atomic queue.
+* Atomic single-producer, single-consumer queue.
+* Multiple-producer, single-consumer queue.
+* Thread pool.
 
 ## Random
 * Good version of cstrncpy.
@@ -42,6 +45,5 @@ make
 # TODO:
 * Remove mutex from pool. In this case, syncronization of resources should be left to user.
 * Consider removing functions attached to pool.
-* Attach function pointer to vht for producing "key" when evaluating the hash of a given key.
 * Standardize public API naming.
 * Standardize returned errors.

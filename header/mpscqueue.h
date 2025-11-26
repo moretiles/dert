@@ -1,6 +1,6 @@
 /*
- * aqueue.h -- Atomic queue designed for single producer, single consumer workflow
- * This structure is thread safe to use when one producer thread enqueues and one consumer thread dequeues
+ * mpscqueue_priv.h -- Multi-producer, single-consumer queue
+ * This structure is thread safe to use when multiple producer threads enqueue and one consumer thread dequeues
  * This structure does not overwrite elements that are currently queued unless they have been dequeued
  *
  * DERT - Miscellaneous Data Structures Library
@@ -10,10 +10,9 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <pthread.h>
 
-#ifndef DERT_AQUEUE
-#define DERT_AQUEUE 1
-typedef struct aqueue {
+typedef struct mpscqueue {
     // elements that are in the queue placed here
     void *elems;
 
@@ -31,49 +30,51 @@ typedef struct aqueue {
 
     // total number of elements this queue can store, if empty
     size_t cap;
-} Aqueue;
 
-// Allocates memory for and initializes a Aqueue.
-Aqueue *aqueue_create(size_t elem_size, size_t num_elems);
+    // mutex used to synchronize the multiple producers
+    pthread_mutex_t producer_mutex;
+} Mpscqueue;
 
-// Initializes a Aqueue.
-int aqueue_init(Aqueue *queue, size_t elem_size, size_t num_elems);
+// Allocates memory for and initializes a Mpscqueue.
+Mpscqueue *mpscqueue_create(size_t elem_size, size_t num_elems);
 
-// Deinitializes a Aqueue>
-void aqueue_deinit(Aqueue *queue);
+// Initializes a Mpscqueue.
+int mpscqueue_init(Mpscqueue *queue, size_t elem_size, size_t num_elems);
+
+// Deinitializes a Mpscqueue>
+void mpscqueue_deinit(Mpscqueue *queue);
 
 /*
- * Destroys a Aqueue that was allocated by aqueue_create.
- * Please, only use with memory allocated by aqueue_create!
+ * Destroys a Mpscqueue that was allocated by mpscqueue_create.
+ * Please, only use with memory allocated by mpscqueue_create!
  */
-void aqueue_destroy(Aqueue *queue);
+void mpscqueue_destroy(Mpscqueue *queue);
 
 // Enqueues contents of src into queue.
-int aqueue_enqueue(Aqueue *queue, void *src);
+int mpscqueue_enqueue(Mpscqueue *queue, void *src);
 
 // Dequeues front element of queue into dest.
-int aqueue_dequeue(Aqueue *queue, void *dest);
+int mpscqueue_dequeue(Mpscqueue *queue, void *dest);
 
 // Gets the contents of the front of the queue.
-int aqueue_front(Aqueue *queue, void *dest);
+int mpscqueue_front(Mpscqueue *queue, void *dest);
 
 /*
  * Gets the memory address of the element in the front of the queue.
  * Should be used carefully as further enqeue/dequeue operations can overwrite this memory.
  * Thus, storing the pointer returned from this across operations almost always introduces a bug!
  */
-void *aqueue_front_direct(Aqueue *queue);
+void *mpscqueue_front_direct(Mpscqueue *queue);
 
 /*
  * Returns current length of the queue.
  * Calculated as number of elements currently enqueued.
  * Decreases when elements are dequeued.
  */
-size_t aqueue_len(Aqueue *queue);
+size_t mpscqueue_len(Mpscqueue *queue);
 
 /*
  * Returns the total number of elements that can be enqueued without overwriting anything if the queue is empty.
  * Calculated as number of elements the queue was told to allocate when creating/initializing.
  */
-size_t aqueue_cap(Aqueue *queue);
-#endif
+size_t mpscqueue_cap(Mpscqueue *queue);

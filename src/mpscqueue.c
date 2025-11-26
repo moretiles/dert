@@ -1,13 +1,17 @@
-#include <aqueue.h>
-#include <aqueue_priv.h>
+#include <mpscqueue.h>
+#include <mpscqueue_priv.h>
 #include <pointerarith.h>
 
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
-size_t aqueue_wrap(Aqueue *queue, size_t pos) {
+// This implementation is nearly identical to aqueue
+// Main difference is that in order to enqueue producers lock a mutex
+
+size_t mpscqueue_wrap(Mpscqueue *queue, size_t pos) {
     if(queue == NULL) {
         return 0;
     }
@@ -15,26 +19,26 @@ size_t aqueue_wrap(Aqueue *queue, size_t pos) {
     return pos % queue->cap;
 }
 
-Aqueue *aqueue_create(size_t elem_size, size_t num_elems) {
-    Aqueue *ret;
+Mpscqueue *mpscqueue_create(size_t elem_size, size_t num_elems) {
+    Mpscqueue *ret;
 
     if(elem_size == 0 || num_elems == 0) {
         return NULL;
     }
 
-    ret = calloc(1, sizeof(Aqueue));
+    ret = calloc(1, sizeof(Mpscqueue));
     if(ret == NULL) {
         return NULL;
     }
 
-    if(aqueue_init(ret, elem_size, num_elems) != 0) {
+    if(mpscqueue_init(ret, elem_size, num_elems) != 0) {
         free(ret);
         return NULL;
     }
     return ret;
 }
 
-int aqueue_init(Aqueue *queue, size_t elem_size, size_t num_elems) {
+int mpscqueue_init(Mpscqueue *queue, size_t elem_size, size_t num_elems) {
     if(queue == NULL || elem_size == 0 || num_elems == 0) {
         return 1;
     }
@@ -47,80 +51,90 @@ int aqueue_init(Aqueue *queue, size_t elem_size, size_t num_elems) {
     queue->elem_size = elem_size;
     queue->front = 0;
     queue->back = 0;
-    __atomic_store_n(&(queue->len), 0, __ATOMIC_SEQ_CST);
+    queue->len = 0;
     queue->cap = num_elems;
+    pthread_mutex_init(&(queue->producer_mutex), NULL);
     return 0;
 }
 
-void aqueue_deinit(Aqueue *queue) {
+void mpscqueue_deinit(Mpscqueue *queue) {
     if(queue == NULL || queue->elems == NULL) {
         return;
     }
 
     free(queue->elems);
-    memset(queue, 0, sizeof(Aqueue));
+    pthread_mutex_destroy(&(queue->producer_mutex));
+    memset(queue, 0, sizeof(Mpscqueue));
     return;
 }
 
-void aqueue_destroy(Aqueue *queue) {
+void mpscqueue_destroy(Mpscqueue *queue) {
     if(queue == NULL) {
         return;
     }
 
-    aqueue_deinit(queue);
+    mpscqueue_deinit(queue);
     free(queue);
     return;
 }
 
-int aqueue_enqueue(Aqueue *queue, void *src) {
+int mpscqueue_enqueue(Mpscqueue *queue, void *src) {
     void *enqueued;
 
     if(queue == NULL || src == NULL) {
         return 1;
     }
 
+    if(pthread_mutex_lock(&(queue->producer_mutex)) != 0) {
+        return 2;
+    }
+
     // fail if full
-    if(__atomic_load_n(&(queue->len), __ATOMIC_SEQ_CST) == queue->cap) {
+    if(queue->len == queue->cap) {
         return 3;
     }
 
-    enqueued = pointer_literal_addition(queue->elems, queue->elem_size * aqueue_wrap(queue, queue->back));
+    enqueued = pointer_literal_addition(queue->elems, queue->elem_size * mpscqueue_wrap(queue, queue->back));
     if(memcpy(enqueued, src, queue->elem_size) != enqueued) {
         return 4;
     }
-    queue->back = aqueue_wrap(queue, queue->back + 1);
+    queue->back = mpscqueue_wrap(queue, queue->back + 1);
     __atomic_add_fetch(&(queue->len), 1LU, __ATOMIC_SEQ_CST);
+
+    if(pthread_mutex_unlock(&(queue->producer_mutex)) != 0) {
+        return 5;
+    }
 
     return 0;
 }
 
-int aqueue_dequeue(Aqueue *queue, void *dest) {
+int mpscqueue_dequeue(Mpscqueue *queue, void *dest) {
     if(queue == NULL) {
         return 0;
     }
 
     // fails when queue->len == 0
-    if(aqueue_front(queue, dest) != 0) {
+    if(mpscqueue_front(queue, dest) != 0) {
         return 1;
     }
-    queue->front = aqueue_wrap(queue, queue->front + 1);
+    queue->front = mpscqueue_wrap(queue, queue->front + 1);
     __atomic_sub_fetch(&(queue->len), 1LU, __ATOMIC_SEQ_CST);
 
     return 0;
 }
 
-int aqueue_front(Aqueue *queue, void *dest) {
+int mpscqueue_front(Mpscqueue *queue, void *dest) {
     void *front;
 
     if(queue == NULL) {
         return 1;
     }
 
-    if(__atomic_load_n(&(queue->len), __ATOMIC_SEQ_CST) == 0) {
+    if(queue->len == 0) {
         return 2;
     }
 
-    front = aqueue_front_direct(queue);
+    front = mpscqueue_front_direct(queue);
     if(front == NULL) {
         return 3;
     }
@@ -130,27 +144,27 @@ int aqueue_front(Aqueue *queue, void *dest) {
     return 0;
 }
 
-void *aqueue_front_direct(Aqueue *queue) {
+void *mpscqueue_front_direct(Mpscqueue *queue) {
     if(queue == NULL) {
         return NULL;
     }
 
-    if(__atomic_load_n(&(queue->len), __ATOMIC_SEQ_CST) == 0) {
+    if(queue->len == 0) {
         return NULL;
     }
 
-    return pointer_literal_addition(queue->elems, queue->elem_size * aqueue_wrap(queue, queue->front));
+    return pointer_literal_addition(queue->elems, queue->elem_size * mpscqueue_wrap(queue, queue->front));
 }
 
-size_t aqueue_len(Aqueue *queue) {
+size_t mpscqueue_len(Mpscqueue *queue) {
     if(queue == NULL) {
         return 0;
     }
 
-    return __atomic_load_n(&(queue->len), __ATOMIC_SEQ_CST);
+    return queue->len;
 }
 
-size_t aqueue_cap(Aqueue *queue) {
+size_t mpscqueue_cap(Mpscqueue *queue) {
     if(queue == NULL) {
         return 0;
     }

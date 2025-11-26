@@ -9,3 +9,5 @@
 #include <stddef.h>
 
 void *pointer_literal_addition(void *ptr, size_t increment);
+
+void *array_nth(void *array_base, size_t index, size_t item_size);
