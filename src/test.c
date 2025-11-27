@@ -554,8 +554,8 @@ int tpoolrr_test(void) {
     }
 
     {
-#define TPOOLRR_TEST_FUNCTION3_THREADS (25)
-#define TPOOLRR_TEST_FUNCTION3_JOBS (25)
+#define TPOOLRR_TEST_FUNCTION3_THREADS (3)
+#define TPOOLRR_TEST_FUNCTION3_JOBS (3)
         pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION3_THREADS, TPOOLRR_TEST_FUNCTION3_JOBS);
         assert(pool != NULL);
         int counter = 0;

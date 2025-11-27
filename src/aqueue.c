@@ -16,39 +16,80 @@ size_t aqueue_wrap(Aqueue *queue, size_t pos) {
 }
 
 Aqueue *aqueue_create(size_t elem_size, size_t num_elems) {
+    void *memory;
     Aqueue *ret;
 
     if(elem_size == 0 || num_elems == 0) {
         return NULL;
     }
 
-    ret = calloc(1, sizeof(Aqueue));
-    if(ret == NULL) {
+    memory = calloc(1, aqueue_advise(elem_size, num_elems));
+    if(memory == NULL) {
         return NULL;
     }
 
-    if(aqueue_init(ret, elem_size, num_elems) != 0) {
-        free(ret);
+    if(aqueue_init(&ret, memory, elem_size, num_elems) != 0) {
+        free(memory);
         return NULL;
     }
     return ret;
 }
 
-int aqueue_init(Aqueue *queue, size_t elem_size, size_t num_elems) {
-    if(queue == NULL || elem_size == 0 || num_elems == 0) {
+size_t aqueue_advise(size_t elem_size, size_t num_elems){
+    return (1 * sizeof(Aqueue)) +
+           (num_elems * elem_size);
+}
+
+size_t aqueue_advisev(size_t num_queues, size_t elem_size, size_t num_elems){
+    return num_queues * ((1 * sizeof(Aqueue)) +
+                         (num_elems * elem_size));
+}
+
+int aqueue_init(Aqueue **dest, void *memory, size_t elem_size, size_t num_elems) {
+    Aqueue *queue;
+    void *ptr;
+
+    if(dest == NULL || memory == NULL || elem_size == 0 || num_elems == 0) {
         return 1;
     }
 
-    queue->elems = calloc(num_elems, elem_size);
-    if(queue->elems == NULL) {
-        return 2;
-    }
+    ptr = memory;
+    ptr = pointer_literal_addition(ptr, 0);
+    queue = (Aqueue *) ptr;
+    ptr = pointer_literal_addition(ptr, 1 * sizeof(Aqueue));
+    queue->elems = (void *) ptr;
 
     queue->elem_size = elem_size;
     queue->front = 0;
     queue->back = 0;
     __atomic_store_n(&(queue->len), 0, __ATOMIC_SEQ_CST);
     queue->cap = num_elems;
+
+    *dest = queue;
+    return 0;
+}
+
+int aqueue_initv(size_t num_queues, Aqueue *dest[], void *memory, size_t elem_size, size_t num_elems) {
+    void *ptr;
+    Aqueue *queues;
+
+    if(dest == NULL || memory == NULL || elem_size == 0 || num_elems == 0) {
+        return 1;
+    }
+
+    *dest = memory;
+    queues = memory;
+
+    ptr = pointer_literal_addition(queues, num_queues * sizeof(Aqueue));
+    for(size_t i = 0; i < num_queues; i++){
+        queues[i].elems = (void *) ptr;
+        queues[i].elem_size = elem_size;
+        queues[i].front = 0;
+        queues[i].back = 0;
+        __atomic_store_n(&(queues[i].len), 0, __ATOMIC_SEQ_CST);
+        queues[i].cap = num_elems;
+        ptr = pointer_literal_addition(ptr, aqueue_advise(elem_size, num_elems) - sizeof(Aqueue));
+    }
     return 0;
 }
 
@@ -57,7 +98,6 @@ void aqueue_deinit(Aqueue *queue) {
         return;
     }
 
-    free(queue->elems);
     memset(queue, 0, sizeof(Aqueue));
     return;
 }
