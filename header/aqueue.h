@@ -36,10 +36,20 @@ typedef struct aqueue {
 // Allocates memory for and initializes a Aqueue.
 Aqueue *aqueue_create(size_t elem_size, size_t num_elems);
 
-// Initializes a Aqueue.
-int aqueue_init(Aqueue *queue, size_t elem_size, size_t num_elems);
+// Advise how much memory an Aqueue with a capacity of num_elems needs
+// Assumes that the same value for num_elems is used when calling tbuf_init
+size_t aqueue_advise(size_t elem_size, size_t num_elems);
 
-// Deinitializes a Aqueue>
+// Advise for many
+size_t aqueue_advisev(size_t num_queues, size_t elem_size, size_t num_elems);
+
+// Initializes a Aqueue
+int aqueue_init(Aqueue **dest, void *memory, size_t elem_size, size_t num_elems);
+
+// Initialize for many
+int aqueue_initv(size_t num_queues, Aqueue *dest[], void *memory, size_t elem_size, size_t num_elems);
+
+// Deinitializes a Aqueue
 void aqueue_deinit(Aqueue *queue);
 
 /*

@@ -413,7 +413,7 @@ tpoolrr_worker_loop:
 
         // get next job
         res = aqueue_dequeue(job_queue, &job);
-        printf("%lu: Got job %p\n", index, (void *) job.arg);
+        printf("%lu: Got job %lu(%lu)\n", index, (size_t) job.function, (size_t) job.arg);
         if(res != 0) {
             printf("Failed to dequeue!\n");
             // maybe log???;
@@ -461,7 +461,7 @@ size_t tpoolrr_advise(size_t thread_count, size_t jobs_per_thread) {
     return (1 * sizeof(Tpoolrr)) +
            (thread_count * sizeof(pthread_t)) +
            (thread_count * sizeof(struct tpoolrr_worker_arg)) +
-           (thread_count * sizeof(Aqueue)) +
+           (1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread)) +
            (thread_count * sizeof(enum tpoolrr_thread_state)) +
            (thread_count * sizeof(enum tpoolrr_thread_state)) +
            (thread_count * sizeof(pthread_cond_t)) +
@@ -491,7 +491,7 @@ int tpoolrr_init(Tpoolrr **dest, void *memory, size_t thread_count, size_t jobs_
                          thread_count * sizeof(struct tpoolrr_worker_arg));
     pool->job_queues = next_unused_region;
     next_unused_region = pointer_literal_addition(next_unused_region,
-                         thread_count * sizeof(Aqueue));
+                         1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread));
     pool->desired_states = next_unused_region;
     next_unused_region = pointer_literal_addition(next_unused_region,
                          thread_count * sizeof(enum tpoolrr_thread_state));
@@ -506,8 +506,8 @@ int tpoolrr_init(Tpoolrr **dest, void *memory, size_t thread_count, size_t jobs_
     pool->threads_total = thread_count;
     pool->jobs_per_thread = jobs_per_thread;
 
+    aqueue_initv(thread_count, &(pool->job_queues), (void *) pool->job_queues, sizeof(struct tpoolrr_job), jobs_per_thread);
     for(size_t i = 0; i < thread_count; i++) {
-        aqueue_init(&(pool->job_queues[i]), sizeof(struct tpoolrr_job), jobs_per_thread);
         pool->desired_states[i] = TPOOLRR_THREAD_STATE_ACTIVE;
         pool->current_states[i] = TPOOLRR_THREAD_STATE_ACTIVE;
         res = pthread_cond_init(&(pool->conditions[i]), NULL);
