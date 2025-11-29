@@ -7,22 +7,24 @@
 * Arenas.
 * Pools.
 
-## General purpose data structures that function for all types
+## Dynamic length
 * Dynamic Length Array.
+* Doubly linked list.
+* Hashmap -- built using two parallel varray.
+
+## Fixed length
+* Twin Buffers.
 * Stack.
 * Queue.
 * Ring Buffer (Queue data structure with overwrite enabled).
-* Doubly linked list.
-* Hashmap -- built using two parallel varray.
-* Twin Buffers.
-
-## FILE I/O
 * File Buffered Queue.
-
-## Multithreaded
 * Atomic single-producer, single-consumer queue.
 * Multiple-producer, single-consumer queue.
+
+## Synchronization
 * Thread pool.
+* Futex-Backed Mutex (Linux only).
+* Futex-Backed Semaphore (Linux only).
 
 ## Random
 * Good version of cstrncpy.

@@ -26,8 +26,18 @@ typedef struct vstack {
 // Allocates memory for and initializes a Vstack.
 Vstack *vstack_create(size_t elem_size, size_t num_elems);
 
+// Advise how much memory a Vstack with num_elems elements each of elem_size bytes needs.
+// Assumes that the same valuew for elem_size and num_elems are used when calling vstack_init
+size_t vstack_advise(size_t elem_size, size_t num_elems);
+
+// Advise for many
+size_t vstack_advisev(size_t num_stacks, size_t elem_size, size_t num_elems);
+
 // Initializes a Vstack.
-int vstack_init(Vstack *stack, size_t elem_size, size_t num_elems);
+int vstack_init(Vstack **dest, void *memory, size_t elem_size, size_t num_elems);
+
+// Initialize for many
+int vstack_initv(size_t num_queues, Vstack *dest[], void *memory, size_t elem_size, size_t num_elems);
 
 // Deinitializes a Vstack.
 int vstack_deinit(Vstack *stack);

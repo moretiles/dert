@@ -44,6 +44,12 @@ size_t tbuf_advise(size_t cap) {
            (cap * sizeof(char));
 }
 
+size_t tbuf_advisev(size_t num_bufs, size_t cap) {
+    return num_bufs * ((1 * sizeof(Tbuf)) +
+                       (cap * sizeof(char)) +
+                       (cap * sizeof(char)));
+}
+
 int tbuf_init(Tbuf **dest, void *memory, size_t cap) {
     Tbuf *twin;
     char *A;
@@ -70,6 +76,28 @@ int tbuf_init(Tbuf **dest, void *memory, size_t cap) {
     twin->cap = cap;
 
     *dest = twin;
+    return 0;
+}
+
+int tbuf_initv(size_t num_bufs, Tbuf *dest[], void *memory, size_t cap) {
+    Tbuf *twins;
+    void *ptr;
+
+    if(dest == NULL || memory ==  NULL || cap == 0) {
+        return EINVAL;
+    }
+
+    twins = memory;
+    ptr = pointer_literal_addition(memory, num_bufs * sizeof(Tbuf));
+    for(size_t i = 0; i < num_bufs; i++) {
+        twins[i].A = (char *) ptr;
+        ptr = pointer_literal_addition(ptr, (cap * sizeof(char)));
+        twins[i].B = (char *) ptr;
+        ptr = pointer_literal_addition(ptr, (cap * sizeof(char)));
+        twins[i].cap = cap;
+    }
+
+    *dest = twins;
     return 0;
 }
 

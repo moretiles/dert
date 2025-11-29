@@ -257,33 +257,45 @@ void must_pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 int try_pthread_join(Tpoolrr *pool, size_t index, void **retval) {
     int res;
     struct timespec t = { 0 };
+    bool locked_mutex_from_here = false;
 
     for(size_t i = 0; i < PTHREAD_CREATE_JOIN_ATTEMPTS; i++) {
+        res = try_pthread_mutex_lock(&(pool->condition_mutexes[index]));
+        if(res != 0) {
+            goto try_pthread_join_error;
+        }
+        locked_mutex_from_here = true;
+
         if(pool->current_states[index] == TPOOLRR_THREAD_STATE_JOINED) {
-            return 0;
+            res = 0;
+            goto try_pthread_join_error;
         }
         assert(clock_getres(CLOCK_REALTIME, &t) == 0);
         t.tv_sec = 0;
         t.tv_nsec += 10000000;
-        res = try_pthread_mutex_lock(&(pool->condition_mutexes[index]));
-        if(res != 0) {
-            return res;
-        }
         res = pthread_timedjoin_np(pool->threads[index], retval, &t);
         if(res == 0) {
-            return 0;
+            res = 0;
+            goto try_pthread_join_error;
         }
         res = try_pthread_cond_signal(&(pool->conditions[index]));
         if (res != 0) {
-            return res;
+            goto try_pthread_join_error;
         }
+
+        locked_mutex_from_here = false;
         res = try_pthread_mutex_unlock(&(pool->condition_mutexes[index]));
         if(res != 0) {
-            return res;
+            goto try_pthread_join_error;
         }
         sleep(1);
     }
 
+try_pthread_join_error:
+    if(locked_mutex_from_here) {
+        pthread_mutex_unlock(&(pool->condition_mutexes[index]));
+        locked_mutex_from_here = false;
+    }
     return res;
 }
 
@@ -469,7 +481,7 @@ size_t tpoolrr_advise(size_t thread_count, size_t jobs_per_thread) {
 }
 
 int tpoolrr_init(Tpoolrr **dest, void *memory, size_t thread_count, size_t jobs_per_thread) {
-    void *next_unused_region;
+    void *ptr;
     Tpoolrr *pool;
     int res;
 
@@ -477,37 +489,27 @@ int tpoolrr_init(Tpoolrr **dest, void *memory, size_t thread_count, size_t jobs_
         return EINVAL;
     }
 
-    next_unused_region = memory;
-    next_unused_region = pointer_literal_addition(next_unused_region,
-                         0);
-    pool = next_unused_region;
-    next_unused_region = pointer_literal_addition(next_unused_region,
-                         1 * sizeof(Tpoolrr));
-    pool->threads = next_unused_region;
-    next_unused_region = pointer_literal_addition(next_unused_region,
-                         thread_count * sizeof(pthread_t));
-    pool->worker_args = next_unused_region;
-    next_unused_region = pointer_literal_addition(next_unused_region,
-                         thread_count * sizeof(struct tpoolrr_worker_arg));
-    pool->job_queues = next_unused_region;
-    next_unused_region = pointer_literal_addition(next_unused_region,
-                         1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread));
-    pool->desired_states = next_unused_region;
-    next_unused_region = pointer_literal_addition(next_unused_region,
-                         thread_count * sizeof(enum tpoolrr_thread_state));
-    pool->current_states = next_unused_region;
-    next_unused_region = pointer_literal_addition(next_unused_region,
-                         thread_count * sizeof(enum tpoolrr_thread_state));
-    pool->conditions = next_unused_region;
-    next_unused_region = pointer_literal_addition(next_unused_region,
-                         thread_count * sizeof(pthread_cond_t));
-    pool->condition_mutexes = next_unused_region;
-    pool->rr_index = 0;
-    pool->threads_total = thread_count;
-    pool->jobs_per_thread = jobs_per_thread;
+    ptr = memory;
+    ptr = pointer_literal_addition(ptr, 0);
+    pool = ptr;
+    ptr = pointer_literal_addition(ptr, 1 * sizeof(Tpoolrr));
+    pool->threads = ptr;
+    ptr = pointer_literal_addition(ptr, thread_count * sizeof(pthread_t));
+    pool->worker_args = ptr;
+    ptr = pointer_literal_addition(ptr, thread_count * sizeof(struct tpoolrr_worker_arg));
+    pool->job_queues = ptr;
+    ptr = pointer_literal_addition(ptr, 1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread));
+    pool->desired_states = ptr;
+    ptr = pointer_literal_addition(ptr, thread_count * sizeof(enum tpoolrr_thread_state));
+    pool->current_states = ptr;
+    ptr = pointer_literal_addition(ptr, thread_count * sizeof(enum tpoolrr_thread_state));
+    pool->conditions = ptr;
+    ptr = pointer_literal_addition(ptr, thread_count * sizeof(pthread_cond_t));
+    pool->condition_mutexes = ptr;
 
     aqueue_initv(thread_count, &(pool->job_queues), (void *) pool->job_queues, sizeof(struct tpoolrr_job), jobs_per_thread);
     for(size_t i = 0; i < thread_count; i++) {
+        pool->worker_args[i] = tpoolrr_worker_arg_construct(pool, i);
         pool->desired_states[i] = TPOOLRR_THREAD_STATE_ACTIVE;
         pool->current_states[i] = TPOOLRR_THREAD_STATE_ACTIVE;
         res = pthread_cond_init(&(pool->conditions[i]), NULL);
@@ -519,9 +521,14 @@ int tpoolrr_init(Tpoolrr **dest, void *memory, size_t thread_count, size_t jobs_
             return res;
         }
 
-        pool->worker_args[i] = tpoolrr_worker_arg_construct(pool, i);
         pthread_create(&(pool->threads[i]), NULL, tpoolrr_worker, (void *) &(pool->worker_args[i]));
     }
+
+    pool->stopped = false;
+    pool->handler_function = NULL;
+    pool->rr_index = 0;
+    pool->threads_total = thread_count;
+    pool->jobs_per_thread = jobs_per_thread;
 
     *dest = pool;
     return 0;
@@ -532,11 +539,13 @@ void tpoolrr_deinit(Tpoolrr *pool) {
         return;
     }
 
+    if(!(pool->stopped)) {
 #if TPOOLRR_LET_UNRECOVERABLE_ERRORS_FAIL_SILENTLY
-    tpoolrr_stop_safe(pool);
+        tpoolrr_stop_safe(pool);
 #else
-    assert(tpoolrr_stop_safe(pool) == 0);
+        assert(tpoolrr_stop_safe(pool) == 0);
 #endif
+    }
 
     for(size_t i = 0; i < pool->threads_total; i++) {
         aqueue_deinit(&(pool->job_queues[i]));
@@ -793,6 +802,10 @@ int tpoolrr_stop_safe(Tpoolrr *pool) {
     void *thread_return_value;
     size_t i = 0;
     bool locked_mutex_from_here = false;
+    bool thread_already_joined = false;
+    bool thread_already_stopped = false;
+    bool thread_already_cancelled = false;
+    bool need_to_stop_this_thread = false;
 
     if(pool == NULL) {
         return EINVAL;
@@ -804,27 +817,31 @@ int tpoolrr_stop_safe(Tpoolrr *pool) {
             goto tpoolrr_stop_safe_error;
         }
         locked_mutex_from_here = true;
+
         pool->desired_states[i] = TPOOLRR_THREAD_STATE_STOPPED;
-        res = pthread_cond_signal(&(pool->conditions[i]));
-        if (res != 0) {
-            goto tpoolrr_stop_safe_error;
-        }
+        thread_already_joined = pool->current_states[i] == TPOOLRR_THREAD_STATE_JOINED;
+        thread_already_stopped = pool->current_states[i] == TPOOLRR_THREAD_STATE_STOPPED;
+        thread_already_cancelled = pool->current_states[i] == TPOOLRR_THREAD_STATE_CANCELLED;
+        need_to_stop_this_thread = !thread_already_joined && !thread_already_stopped && !thread_already_cancelled;
+
         res = pthread_mutex_unlock(&(pool->condition_mutexes[i]));
-        if (res != 0) {
+        if(res != 0) {
             goto tpoolrr_stop_safe_error;
         }
         locked_mutex_from_here = false;
-    }
 
-    for(i = 0; i < pool->threads_total; i++) {
-        if(pool->current_states[i] != TPOOLRR_THREAD_STATE_JOINED &&
-                pool->current_states[i] != TPOOLRR_THREAD_STATE_CANCELLED) {
-            res = pthread_join(pool->threads[i], &thread_return_value) == 0;
+        if(need_to_stop_this_thread) {
+            res = pthread_cond_signal(&(pool->conditions[i]));
+            if(res != 0) {
+                goto tpoolrr_stop_safe_error;
+            }
+            res = pthread_join(pool->threads[i], &thread_return_value);
             if(res != 0) {
                 goto tpoolrr_stop_safe_error;
             }
         }
     }
+    pool->stopped = true;
 
 tpoolrr_stop_safe_error:
     if(locked_mutex_from_here) {
@@ -847,6 +864,7 @@ int tpoolrr_stop_unsafe(Tpoolrr *pool) {
         // don't check error, just attempt
         pthread_cancel(pool->threads[i]);
     }
+    pool->stopped = true;
 
     // threads can disable cancellation and deadlock/timeout may prevent timely responses
     // best to just return as success
@@ -860,6 +878,7 @@ int tpoolrr_join(Tpoolrr *pool) {
     size_t i = 0;
     bool locked_mutex_from_here = false;
     bool thread_already_joined = false;
+    bool thread_already_stopped = false;
     bool thread_already_cancelled = false;
     bool need_to_join_this_thread = false;
 
@@ -876,8 +895,9 @@ int tpoolrr_join(Tpoolrr *pool) {
 
         pool->desired_states[i] = TPOOLRR_THREAD_STATE_JOINED;
         thread_already_joined = pool->current_states[i] == TPOOLRR_THREAD_STATE_JOINED;
+        thread_already_stopped = pool->current_states[i] == TPOOLRR_THREAD_STATE_STOPPED;
         thread_already_cancelled = pool->current_states[i] == TPOOLRR_THREAD_STATE_CANCELLED;
-        need_to_join_this_thread = !thread_already_joined || !thread_already_cancelled;
+        need_to_join_this_thread = !thread_already_joined && !thread_already_stopped && !thread_already_cancelled;
 
         res = pthread_mutex_unlock(&(pool->condition_mutexes[i]));
         if(res != 0) {
@@ -896,6 +916,7 @@ int tpoolrr_join(Tpoolrr *pool) {
             }
         }
     }
+    pool->stopped = true;
 
 tpoolrr_join_error:
     if(locked_mutex_from_here) {
@@ -903,6 +924,26 @@ tpoolrr_join_error:
         locked_mutex_from_here = false;
     }
     return res;
+}
+
+int tpoolrr_handler_update(Tpoolrr *pool, void *((*function)(struct tpoolrr *pool, void *arg))) {
+    if(pool == NULL || function == NULL) {
+        return EINVAL;
+    }
+
+    pool->handler_function = function;
+
+    return 0;
+}
+
+int tpoolrr_handler_call(Tpoolrr *pool, void *arg, void **retval) {
+    if(pool == NULL || pool->handler_function == NULL || retval == NULL) {
+        return EINVAL;
+    }
+
+    *retval = pool->handler_function(pool, arg);
+
+    return 0;
 }
 
 size_t tpoolrr_threads_active(Tpoolrr *pool) {

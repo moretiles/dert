@@ -28,8 +28,14 @@ Tbuf *tbuf_create(size_t cap);
 // Assumes that the same cap is used when calling tbuf_advise and tbuf_init
 size_t tbuf_advise(size_t cap);
 
+// Advise for many
+size_t tbuf_advisev(size_t num_bufs, size_t cap);
+
 // Initializes a Tbuf.
 int tbuf_init(Tbuf **dest, void *memory, size_t cap);
+
+// Initialize for many
+int tbuf_initv(size_t num_bufs, Tbuf *dest[], void *memory, size_t cap);
 
 // Deinitializes a Tbuf
 void tbuf_deinit(Tbuf *twin);
