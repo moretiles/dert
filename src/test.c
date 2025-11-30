@@ -1,3 +1,6 @@
+#define _XOPEN_SOURCE (500)
+#define _GNU_SOURCE (1)
+
 #include <assert.h>
 #include <pointerarith.h>
 
@@ -14,11 +17,14 @@
 #include <tpoolrr.h>
 #include <vht.h>
 #include <fqueue.h>
+#include <fmutex.h>
+#include <fsemaphore.h>
 
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/random.h>
 
 int seed;
 
@@ -187,35 +193,58 @@ int vdll_test(void) {
 }
 
 int tbuf_test(void) {
-    char *a, *b;
+    {
+        char *a, *b;
+        Tbuf *twin = tbuf_create(99);
+        assert(twin != NULL);
+        assert(tbuf_cap(twin) == 99);
+        assert(tbuf_claim(twin, &a, &b) == 0);
+        assert(a != NULL);
+        assert(b != NULL);
+        assert(strcpy(a, "123") != NULL);
+        assert(strcpy(b, "456") != NULL);
+        assert(!strcmp(a, "123"));
+        assert(!strcmp(b, "456"));
+        assert(tbuf_swap(twin) == 0);
+        assert(tbuf_claim(twin, &a, &b) == 0);
+        assert(a != NULL);
+        assert(b != NULL);
+        assert(!strcmp(a, "456"));
+        assert(!strcmp(b, "123"));
+        assert(tbuf_exchange(twin, &a, &b) == 0);
+        assert(a != NULL);
+        assert(b != NULL);
+        assert(!strcmp(a, "456"));
+        assert(!strcmp(b, "123"));
+        assert(tbuf_exchange(twin, &a, &b) == 0);
+        assert(a != NULL);
+        assert(b != NULL);
+        assert(!strcmp(a, "123"));
+        assert(!strcmp(b, "456"));
+        tbuf_destroy(twin);
+    }
 
-    Tbuf *twin = tbuf_create(99);
-    assert(twin != NULL);
-    assert(tbuf_cap(twin) == 99);
-    assert(tbuf_claim(twin, &a, &b) == 0);
-    assert(a != NULL);
-    assert(b != NULL);
-    assert(strcpy(a, "123") != NULL);
-    assert(strcpy(b, "456") != NULL);
-    assert(!strcmp(a, "123"));
-    assert(!strcmp(b, "456"));
-    assert(tbuf_swap(twin) == 0);
-    assert(tbuf_claim(twin, &a, &b) == 0);
-    assert(a != NULL);
-    assert(b != NULL);
-    assert(!strcmp(a, "456"));
-    assert(!strcmp(b, "123"));
-    assert(tbuf_exchange(twin, &a, &b) == 0);
-    assert(a != NULL);
-    assert(b != NULL);
-    assert(!strcmp(a, "456"));
-    assert(!strcmp(b, "123"));
-    assert(tbuf_exchange(twin, &a, &b) == 0);
-    assert(a != NULL);
-    assert(b != NULL);
-    assert(!strcmp(a, "123"));
-    assert(!strcmp(b, "456"));
-    tbuf_destroy(twin);
+    {
+        char *a, *b, *A, *B;
+#define TBUF_TEST_NUM_TWINS (10)
+        Tbuf *twins;
+        void *memory = calloc(1, tbuf_advisev(TBUF_TEST_NUM_TWINS, 99));
+        assert(memory != NULL);
+        assert(tbuf_initv(TBUF_TEST_NUM_TWINS, &twins, memory, 99) == 0);
+
+        for(size_t i = 0; i < TBUF_TEST_NUM_TWINS; i++) {
+            assert(tbuf_exchange(&(twins[i]), &a, &b) == 0);
+            assert(getrandom(a, 16, 0) == 16);
+            assert(getrandom(b, 16, 0) == 16);
+            A = a;
+            B = b;
+            assert(tbuf_exchange(&(twins[i]), &a, &b) == 0);
+            assert(!strcmp(a, B));
+            assert(!strcmp(b, A));
+            tbuf_deinit(&(twins[i]));
+        }
+        free(&(twins[0]));
+    }
 
     return 0;
 }
@@ -271,31 +300,67 @@ int varray_test(void) {
 }
 
 int vstack_test(void) {
-    Vstack *stack = vstack_create(sizeof(long), 3);
-    assert(stack != NULL);
-    assert(vstack_len(stack) == 0);
-    assert(vstack_cap(stack) == 3);
 
-    long a = 1, b = 2, c = 3;
-    assert(vstack_push(stack, &a) == 0);
-    assert(vstack_push(stack, &b) == 0);
-    assert(vstack_push(stack, &c) == 0);
-    assert(vstack_len(stack) == 3);
-    assert(vstack_cap(stack) == 3);
+    {
+        Vstack *stack;
+        stack = vstack_create(sizeof(long), 3);
+        assert(stack != NULL);
+        assert(vstack_len(stack) == 0);
+        assert(vstack_cap(stack) == 3);
 
-    long a_test, b_test, c_test;
-    assert(vstack_top(stack, &c_test) == 0);
-    assert(c_test == c);
-    assert(vstack_pop(stack, &c_test) == 0);
-    assert(vstack_pop(stack, &b_test) == 0);
-    assert(vstack_pop(stack, &a_test) == 0);
-    assert(a_test == a);
-    assert(b_test == b);
-    assert(c_test == c);
+        long a = 1, b = 2, c = 3;
+        assert(vstack_push(stack, &a) == 0);
+        assert(vstack_push(stack, &b) == 0);
+        assert(vstack_push(stack, &c) == 0);
+        assert(vstack_len(stack) == 3);
+        assert(vstack_cap(stack) == 3);
 
-    assert(vstack_len(stack) == 0);
-    assert(vstack_cap(stack) == 3);
-    assert(vstack_destroy(stack) == 0);
+        long a_test, b_test, c_test;
+        assert(vstack_top(stack, &c_test) == 0);
+        assert(c_test == c);
+        assert(vstack_pop(stack, &c_test) == 0);
+        assert(vstack_pop(stack, &b_test) == 0);
+        assert(vstack_pop(stack, &a_test) == 0);
+        assert(a_test == a);
+        assert(b_test == b);
+        assert(c_test == c);
+
+        assert(vstack_len(stack) == 0);
+        assert(vstack_cap(stack) == 3);
+        assert(vstack_destroy(stack) == 0);
+    }
+
+    {
+#define VSTACK_TEST_NUM_STACKS (20)
+        Vstack *stacks;
+        void *memory;
+        long a, b, c, a_test, b_test, c_test;
+
+        memory = calloc(1, vstack_advisev(VSTACK_TEST_NUM_STACKS, sizeof(long), 3));
+        assert(memory != NULL);
+        assert(vstack_initv(VSTACK_TEST_NUM_STACKS, &stacks, memory, sizeof(long), 3) == 0);
+
+        for(size_t i = 0; i < VSTACK_TEST_NUM_STACKS; i++) {
+            a = rand();
+            assert(vstack_push(&(stacks[i]), &a) == 0);
+            b = rand();
+            assert(vstack_push(&(stacks[i]), &b) == 0);
+            c = rand();
+            assert(vstack_push(&(stacks[i]), &c) == 0);
+
+            assert(vstack_pop(&(stacks[i]), &c_test) == 0);
+            assert(c == c_test);
+            assert(vstack_pop(&(stacks[i]), &b_test) == 0);
+            assert(b == b_test);
+            assert(vstack_pop(&(stacks[i]), &a_test) == 0);
+            assert(a == a_test);
+        }
+
+        for(size_t i = 0; i < VSTACK_TEST_NUM_STACKS; i++) {
+            vstack_deinit(&(stacks[i]));
+        }
+        free(stacks);
+    }
 
     return 0;
 }
@@ -443,6 +508,8 @@ int mpscqueue_test_nooverwrite(void) {
     return 0;
 }
 
+#define TPOOLRR_TEST_FUNCTION1_THREADS (5)
+#define TPOOLRR_TEST_FUNCTION1_JOBS (3)
 struct tpoolrr_test_arg1 {
     int *src;
     int *dest;
@@ -463,6 +530,8 @@ void *tpoolrr_test_function1(void *varg) {
     return NULL;
 }
 
+#define TPOOLRR_TEST_FUNCTION2_THREADS (5)
+#define TPOOLRR_TEST_FUNCTION2_JOBS (3)
 struct tpoolrr_test_arg2 {
     char *src;
     char *dest;
@@ -483,14 +552,45 @@ void *tpoolrr_test_function2(void *varg) {
     return NULL;
 }
 
-void *tpoolrr_test_function3(void *varg) {
+#define TPOOLRR_TEST_FUNCTION3_THREADS (1)
+#define TPOOLRR_TEST_FUNCTION3_JOBS (3)
+struct tpoolrr_test_arg3 {
+    Tpoolrr *pool;
+    int *counter;
+    pthread_mutex_t *mutex;
+    pthread_cond_t *cond;
+};
+
+void *tpoolrr_test_worker3(void *varg) {
+    int counter;
+    void *retval;
+
     if(varg == NULL) {
         return "bad!";
     }
 
-    int *arg = (int*) varg;
+    struct tpoolrr_test_arg3 *arg = (struct tpoolrr_test_arg3*) varg;
 
-    __atomic_fetch_add(arg, 1, __ATOMIC_SEQ_CST);
+    counter = __atomic_add_fetch(arg->counter, 1, __ATOMIC_SEQ_CST);
+    if(counter == TPOOLRR_TEST_FUNCTION3_THREADS) {
+        tpoolrr_handler_call(arg->pool, arg, &retval);
+    }
+
+    return NULL;
+}
+
+void *tpoolrr_test_handler3(Tpoolrr *pool, void *varg) {
+    if(varg == NULL) {
+        return "bad!";
+    }
+
+    struct tpoolrr_test_arg3 *arg = varg;
+    pthread_mutex_lock(arg->mutex);
+    pthread_cond_signal(arg->cond);
+    pthread_mutex_unlock(arg->mutex);
+
+    // do nothing with pool
+    (void)(pool);
 
     return NULL;
 }
@@ -500,8 +600,6 @@ int tpoolrr_test(void) {
     printf("Allocating %lu bytes\n", tpoolrr_advise(100, 100));
 
     {
-#define TPOOLRR_TEST_FUNCTION1_THREADS (5)
-#define TPOOLRR_TEST_FUNCTION1_JOBS (3)
         pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION1_THREADS, TPOOLRR_TEST_FUNCTION1_JOBS);
         assert(pool != NULL);
         int src1 = 1, src2 = 2, src3 = 3;
@@ -512,6 +610,28 @@ int tpoolrr_test(void) {
         assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg1, 0) == 0);
         assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg2, 0) == 0);
         assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg3, 0) == 0);
+
+        // actual amount of active jobs/threads is unpredicatable
+        // querying here so thread sanitizer can check for race conditions
+        printf("PAUSING\n");
+        assert(tpoolrr_pause(pool) == 0);
+        printf("PAUSED\n");
+        tpoolrr_jobs_queued(pool);
+        tpoolrr_jobs_empty(pool);
+        tpoolrr_jobs_cap(pool);
+        tpoolrr_threads_active(pool);
+        tpoolrr_threads_inactive(pool);
+        tpoolrr_threads_total(pool);
+        printf("RESUMING\n");
+        assert(tpoolrr_resume(pool) == 0);
+        printf("RESUMED\n");
+        tpoolrr_jobs_queued(pool);
+        tpoolrr_jobs_empty(pool);
+        tpoolrr_jobs_cap(pool);
+        tpoolrr_threads_active(pool);
+        tpoolrr_threads_inactive(pool);
+        tpoolrr_threads_total(pool);
+
         printf("JOINING\n");
         assert(tpoolrr_join(pool) == 0);
         printf("JOINED\n");
@@ -527,17 +647,28 @@ int tpoolrr_test(void) {
     }
 
     {
-#define TPOOLRR_TEST_FUNCTION2_THREADS (5)
-#define TPOOLRR_TEST_FUNCTION2_JOBS (3)
-        pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION2_THREADS, TPOOLRR_TEST_FUNCTION2_JOBS);
-        assert(pool != NULL);
         char src1[999] = "foo", src2[999] = "bar", src3[999] = "baz";
         char dest1[999], dest2[999], dest3[999];
+        Tpoolrr_fn functions[] = {tpoolrr_test_function2, tpoolrr_test_function2, tpoolrr_test_function2};
         struct tpoolrr_test_arg2 arg1 = {(char*) src1, (char*) dest1};
         struct tpoolrr_test_arg2 arg2 = {(char*) src2, (char*) dest2};
         struct tpoolrr_test_arg2 arg3 = {(char*) src3, (char*) dest3};
-        Tpoolrr_fn functions[] = {tpoolrr_test_function2, tpoolrr_test_function2, tpoolrr_test_function2};
         void *args[] = {(void *) &arg1, (void *) &arg2, (void *) &arg3};
+        /*
+        // Because stop_unsafe is dangerous there is often a use-after-free
+        // cannot avoid this
+        // have confirmed in gdb that threads are killed by stop_unsafe
+
+        pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION2_THREADS, TPOOLRR_TEST_FUNCTION2_JOBS);
+        assert(pool != NULL);
+        assert(tpoolrr_jobs_addall(pool, 3, functions, args, 0) == 0);
+        printf("STOPPING\n");
+        assert(tpoolrr_stop_unsafe(pool) == 0);
+        printf("STOPPED\n");
+        tpoolrr_destroy(pool);
+        */
+
+        pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION2_THREADS, TPOOLRR_TEST_FUNCTION2_JOBS);
         assert(tpoolrr_jobs_addall(pool, 3, functions, args, 0) == 0);
         printf("JOINING\n");
         assert(tpoolrr_join(pool) == 0);
@@ -554,14 +685,24 @@ int tpoolrr_test(void) {
     }
 
     {
-#define TPOOLRR_TEST_FUNCTION3_THREADS (3)
-#define TPOOLRR_TEST_FUNCTION3_JOBS (3)
+        int counter = 0;
+        pthread_mutex_t done_yet = { 0 };
+        pthread_cond_t done_cond = { 0 };
+        assert(pthread_mutex_init(&done_yet, NULL) == 0);
+        assert(pthread_mutex_lock(&done_yet) == 0);
+        assert(pthread_cond_init(&done_cond, NULL) == 0);
+        // mutex will be unlocked once counter has finished counting
+
         pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION3_THREADS, TPOOLRR_TEST_FUNCTION3_JOBS);
         assert(pool != NULL);
-        int counter = 0;
-        assert(tpoolrr_jobs_assign(pool, tpoolrr_test_function3, &counter, 0) == 0);
+        assert(tpoolrr_handler_update(pool, tpoolrr_test_handler3) == 0);
+        struct tpoolrr_test_arg3 arg = { pool, &counter, &done_yet, &done_cond };
+        assert(tpoolrr_jobs_assign(pool, tpoolrr_test_worker3, (void *) &arg, 0) == 0);
+
+        assert(pthread_cond_wait(&done_cond, &done_yet) == 0);
+        assert(pthread_mutex_unlock(&done_yet) == 0);
         printf("JOINING\n");
-        assert(tpoolrr_join(pool) == 0);
+        tpoolrr_join(pool);
         printf("JOINED\n");
         printf("counter: %i\n", counter);
         assert(counter == TPOOLRR_TEST_FUNCTION3_THREADS);
@@ -660,6 +801,133 @@ int fqueue_test(void) {
     return 0;
 }
 
+struct fmutex_test_worker_arg {
+    Fmutex *mutex;
+    int counter;
+};
+
+void *fmutex_test_worker(void *varg) {
+    struct fmutex_test_worker_arg *arg;
+    assert(varg != NULL);
+
+    arg = (struct fmutex_test_worker_arg *) varg;
+    assert(fmutex_lock(arg->mutex) == 0);
+    arg->counter += 1;
+    assert(fmutex_unlock(arg->mutex) == 0);
+
+    return NULL;
+}
+
+int fmutex_test(void) {
+    void *retval;
+    struct fmutex_test_worker_arg arg;
+    pthread_t threads[200];
+
+    Fmutex *mutex = fmutex_create();
+    assert(mutex != NULL);
+
+    arg.mutex = mutex;
+    arg.counter = 0;
+    for(size_t i = 0; i < 200; i++) {
+        pthread_create(&threads[i], NULL, fmutex_test_worker, &arg);
+    }
+
+    for(size_t i = 0; i < 200; i++) {
+        pthread_join(threads[i], &retval);
+    }
+
+    fmutex_destroy(mutex);
+    return 0;
+}
+
+struct fsemaphore_test_function_arg {
+    Fsemaphore *sem;
+    int *array;
+    uint64_t index;
+    bool do_post;
+};
+
+#define FSEMAPHORE_SEM_MAX (10)
+void *fsemaphore_test_function(void *varg) {
+    struct fsemaphore_test_function_arg *arg;
+    assert(varg != NULL);
+    arg = varg;
+
+    assert(fsemaphore_wait(arg->sem) == 0);
+    __atomic_fetch_add(&(arg->array[arg->index % FSEMAPHORE_SEM_MAX]), arg->index, __ATOMIC_ACQ_REL);
+    usleep(100);
+    if(arg->do_post) {
+        assert(fsemaphore_post(arg->sem) == 0);
+    }
+
+    return NULL;
+}
+
+int fsemaphore_test(void) {
+    void *retval;
+    pthread_t threads[3 * FSEMAPHORE_SEM_MAX];
+    int array[3 * FSEMAPHORE_SEM_MAX];
+    struct fsemaphore_test_function_arg args[3 * FSEMAPHORE_SEM_MAX];
+
+    // worker threads call fsemaphore_post
+    {
+        Fsemaphore *sem = fsemaphore_create(1, 1);
+        assert(sem != NULL);
+
+        memset(array, 0, 3 * FSEMAPHORE_SEM_MAX * sizeof(int));
+        for(int i = 0; i < 3 * FSEMAPHORE_SEM_MAX; i++) {
+            args[i].sem = sem;
+            args[i].array = array;
+            args[i].index = i;
+            args[i].do_post = true;
+            pthread_create(&(threads[i]), NULL, fsemaphore_test_function, &(args[i]));
+        }
+
+        for(int i = 0; i < 3 * FSEMAPHORE_SEM_MAX; i++) {
+            pthread_join(threads[i], &retval);
+        }
+
+        for(int i = 0; i < FSEMAPHORE_SEM_MAX; i++) {
+            assert(array[i] == (3 * (i + FSEMAPHORE_SEM_MAX)));
+        }
+
+        fsemaphore_destroy(sem);
+    }
+
+    // main thread calls fsemaphore_reset
+    {
+        Fsemaphore *sem = fsemaphore_create(1, 1);
+        assert(sem != NULL);
+
+        memset(array, 0, 3 * FSEMAPHORE_SEM_MAX * sizeof(int));
+        for(int i = 0; i < 3 * FSEMAPHORE_SEM_MAX; i++) {
+            args[i].sem = sem;
+            args[i].array = array;
+            args[i].index = i;
+            args[i].do_post = false;
+            pthread_create(&(threads[i]), NULL, fsemaphore_test_function, &(args[i]));
+        }
+
+        for(int i = 0; i < 3 * FSEMAPHORE_SEM_MAX; i++) {
+            struct timespec timeout = { 0 };
+
+            do {
+                clock_gettime(CLOCK_REALTIME, &timeout);
+                timeout.tv_nsec += 5 * (1 << 20);
+                fsemaphore_reset(sem);
+            } while(pthread_timedjoin_np(threads[i], &retval, &timeout) != 0);
+        }
+
+        for(int i = 0; i < FSEMAPHORE_SEM_MAX; i++) {
+            assert(array[i] == (3 * (i + FSEMAPHORE_SEM_MAX)));
+        }
+
+        fsemaphore_destroy(sem);
+    }
+
+    return 0;
+}
+
 int main(void) {
     seed = time(NULL);
     printf("seed is %i\n", seed);
@@ -677,6 +945,8 @@ int main(void) {
     mpscqueue_test_nooverwrite();
     vht_test();
     tpoolrr_test();
+    fmutex_test();
+    fsemaphore_test();
 
     fqueue_test();
 }

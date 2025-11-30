@@ -18,7 +18,7 @@ clean:
 
 
 
-libdert.a: obj/vstack.o obj/vqueue.o obj/vdll.o obj/tbuf.o obj/varena.o obj/vpool.o obj/varray.o obj/vht.o obj/fqueue.o obj/cstring.o obj/aqueue.o obj/mpscqueue.o obj/tpoolrr.o obj/pointerarith.o obj/siphash.o
+libdert.a: obj/vstack.o obj/vqueue.o obj/vdll.o obj/tbuf.o obj/varena.o obj/vpool.o obj/varray.o obj/vht.o obj/fqueue.o obj/cstring.o obj/aqueue.o obj/mpscqueue.o obj/tpoolrr.o obj/fmutex.o obj/fsemaphore.o obj/pointerarith.o obj/siphash.o
 	ar rcs libdert.a obj/*.o
 
 ## individual recipes
@@ -58,6 +58,12 @@ obj/mpscqueue.o: src/mpscqueue.c header/mpscqueue*.h
 obj/tpoolrr.o: src/tpoolrr.c header/tpoolrr*.h
 	${CC} ${OPTIMIZE} ${CFLAGS} src/tpoolrr.c -c -o obj/tpoolrr.o ${INCLUDE}
 
+obj/fmutex.o: src/fmutex.c header/fmutex*.h
+	${CC} ${OPTIMIZE} ${CFLAGS} src/fmutex.c -c -o obj/fmutex.o ${INCLUDE}
+
+obj/fsemaphore.o: src/fsemaphore.c header/fsemaphore*.h
+	${CC} ${OPTIMIZE} ${CFLAGS} src/fsemaphore.c -c -o obj/fsemaphore.o ${INCLUDE}
+
 obj/cstring.o: src/cstring.c header/cstring*.h
 	${CC} ${OPTIMIZE} ${CFLAGS} src/cstring.c -c -o obj/cstring.o ${INCLUDE}
 
@@ -71,13 +77,13 @@ obj/siphash.o: SipHash/siphash.c SipHash/siphash*.h
 ## tests and housekeeping
 .PHONY: test
 test:
-	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/test.c src/pointerarith.c -o test ${INCLUDE}
+	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/fmutex.c src/fsemaphore.c src/test.c src/pointerarith.c -o test ${INCLUDE}
 
 test_asan:
-	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/test.c src/pointerarith.c -o test ${INCLUDE} -fsanitize=address
+	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/fmutex.c src/fsemaphore.c src/test.c src/pointerarith.c -o test ${INCLUDE} -fsanitize=address
 
 test_tsan:
-	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/test.c src/pointerarith.c -o test ${INCLUDE} -fsanitize=thread
+	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/fmutex.c src/fsemaphore.c src/test.c src/pointerarith.c -o test ${INCLUDE} -fsanitize=thread
 
 .PHONY: tags
 tags:

@@ -47,6 +47,10 @@ enum tpoolrr_thread_state {
 };
 // Round-Robin Thread Pool
 typedef struct tpoolrr {
+    // check if already stopped
+    // needed to prevent accessing threads when using stop_unsafe;
+    bool stopped;
+
     // The pthreads created when pthread_create/pthread_init is called
     pthread_t *threads;
 
@@ -71,7 +75,7 @@ typedef struct tpoolrr {
     pthread_mutex_t *condition_mutexes;
 
     // Handler function that worker thread jobs can call to supervise
-    void ((*handler_function)(struct tpoolrr *pool, void *arg));
+    void *((*handler_function)(struct tpoolrr *pool, void *arg));
 
     // Index used to control the next thread a job should be added to
     size_t rr_index;
@@ -105,33 +109,6 @@ void tpoolrr_deinit(Tpoolrr *pool);
 // Passing a NULL pool causes nothing to happen
 void tpoolrr_destroy(Tpoolrr *pool);
 
-// Update handler associated with pool
-// By default no handler is used
-//int tpoolrr_handler_update(Tpoolrr *pool, void ((*function)(struct tpoolrr *pool, void *arg)));
-
-// Call handler associated with pool
-// By default no handler is used
-//int tpoolrr_handler_call(Tpoolrr *pool);
-
-// Returns 0 when handler is called or no jobs
-// Returns with error if handler not set
-//int tpoolrr_handler_wait(Tpoolrr *pool);
-
-// Add one job to the thread_pool
-// When freshness is 0 then it is not enforced that this job should start before some time in the future
-// When freshness is not 0 then this job is allowed to run only if less than expiration milliseconds have passed
-int tpoolrr_jobs_add(Tpoolrr *pool, void *((*function)(void*)), void *arg, size_t expiration);
-
-// Add many jobs to the thread_pool
-// When freshness is not 0 then each job added is allowed to run only if less than expiration milliseconds have passed
-// Some among the jobs added may start if they begin before expiration milliseconds have passed while while others die
-int tpoolrr_jobs_addall(Tpoolrr *pool, size_t count, void *((*functions[])(void*)), void *args[], size_t expiration);
-
-// Add job to every single thread
-// Fails with EBUSY if every thread does not have at least one free job space in its queue
-// Does not add any jobs until it is confirmed that all threads have at least one free job space in their queue
-int tpoolrr_jobs_assign(Tpoolrr *pool, void *((*function)(void*)), void *arg, size_t expiration);
-
 // Allow threads to finish their current jobs but pause running any future jobs until tpoolrr_resume is called
 int tpoolrr_pause(Tpoolrr *pool);
 
@@ -151,16 +128,28 @@ int tpoolrr_stop_unsafe(Tpoolrr *pool);
 // Wait for thread pool to finish all jobs
 int tpoolrr_join(Tpoolrr *pool);
 
-// Get number of active threads
-// This is by its nature an O(N) operation
-size_t tpoolrr_threads_active(Tpoolrr *pool);
+// Update handler associated with pool
+// By default no handler is used
+int tpoolrr_handler_update(Tpoolrr *pool, void *((*function)(struct tpoolrr *pool, void *arg)));
 
-// Get number of inactive threads
-// This is by its nature an O(N) operation
-size_t tpoolrr_threads_inactive(Tpoolrr *pool);
+// Call handler associated with pool
+// By default no handler is used
+int tpoolrr_handler_call(Tpoolrr *pool, void *arg, void **retval);
 
-// Get number of threads in pool
-size_t tpoolrr_threads_total(Tpoolrr *pool);
+// Add one job to the thread_pool
+// When freshness is 0 then it is not enforced that this job should start before some time in the future
+// When freshness is not 0 then this job is allowed to run only if less than expiration milliseconds have passed
+int tpoolrr_jobs_add(Tpoolrr *pool, void *((*function)(void*)), void *arg, size_t expiration);
+
+// Add many jobs to the thread_pool
+// When freshness is not 0 then each job added is allowed to run only if less than expiration milliseconds have passed
+// Some among the jobs added may start if they begin before expiration milliseconds have passed while while others die
+int tpoolrr_jobs_addall(Tpoolrr *pool, size_t count, void *((*functions[])(void*)), void *args[], size_t expiration);
+
+// Add job to every single thread
+// Fails with EBUSY if every thread does not have at least one free job space in its queue
+// Does not add any jobs until it is confirmed that all threads have at least one free job space in their queue
+int tpoolrr_jobs_assign(Tpoolrr *pool, void *((*function)(void*)), void *arg, size_t expiration);
 
 // Get number of jobs the thread pool has in its current backlog
 // This is by its nature an O(N) operation
@@ -173,3 +162,14 @@ size_t tpoolrr_jobs_empty(Tpoolrr *pool);
 // Get number of jobs the thread pool can accept assuming no jobs are currently queued
 // This is by its nature an O(N) operation
 size_t tpoolrr_jobs_cap(Tpoolrr *pool);
+
+// Get number of active threads
+// This is by its nature an O(N) operation
+size_t tpoolrr_threads_active(Tpoolrr *pool);
+
+// Get number of inactive threads
+// This is by its nature an O(N) operation
+size_t tpoolrr_threads_inactive(Tpoolrr *pool);
+
+// Get number of threads in pool
+size_t tpoolrr_threads_total(Tpoolrr *pool);
