@@ -28,6 +28,8 @@ struct vht_key_bf {
     bool occupied : 1;
 };
 
+void vht_hash_salt_set_or_die();
+
 /* Internal FNV hashing calculation
  * Top 32 bits used to calculate iterate.
  * Bottom 32 bits used to calculate offset.

@@ -127,7 +127,7 @@ int fsemaphore_exhaust(Fsemaphore *sem) {
     if(res != 0) {
         return res;
     }
-    sem->counter = 0;
+    __atomic_store_n(&(sem->counter), 0, __ATOMIC_RELEASE);
     res = fmutex_unlock(sem->mutex);
     if(res != 0) {
         return res;
@@ -150,8 +150,8 @@ int fsemaphore_wait(Fsemaphore *sem) {
             goto fsemaphore_wait_error;
         }
         mutex_locked = true;
-        if(sem->counter > 0) {
-            sem->counter -= 1;
+        if(__atomic_load_n(&(sem->counter), __ATOMIC_ACQUIRE) > 0) {
+            __atomic_fetch_sub(&(sem->counter), 1, __ATOMIC_ACQ_REL);
             decremented = true;
         } else {
             res = fmutex_unlock(sem->mutex);
@@ -159,7 +159,6 @@ int fsemaphore_wait(Fsemaphore *sem) {
                 goto fsemaphore_wait_error;
             }
             mutex_locked = false;
-            printf("sleeping\n");
 
             // want to perform FUTEX_WAIT_PRIVATE syscall
             // Successful result i.e. result in which sem->counter != 0 can be signaled in two ways
@@ -171,13 +170,10 @@ int fsemaphore_wait(Fsemaphore *sem) {
             if(res == 0 || errno == EAGAIN) {
                 // proceed
             } else {
-                printf("error with FUTEX_WAIT in %s = %d\n", __func__, errno);
                 res = errno;
                 goto fsemaphore_wait_error;
             }
             errno = 0;
-
-            printf("awaken\n");
         }
     }
 
@@ -185,6 +181,9 @@ fsemaphore_wait_error:
     if(mutex_locked) {
         fmutex_unlock(sem->mutex);
         mutex_locked = false;
+    }
+    if(res != 0) {
+        printf("error with FUTEX_WAKE in %s = %ld\n", __func__, res);
     }
     return res;
 }
@@ -198,23 +197,24 @@ int fsemaphore_post(Fsemaphore *sem) {
         goto fsemaphore_post_error;
     }
     mutex_locked = true;
-    if(sem->counter == sem->max) {
+    if(__atomic_load_n(&(sem->counter), __ATOMIC_ACQUIRE) == sem->max) {
         res = EDEADLK;
         goto fsemaphore_post_error;
     } else {
-        sem->counter += 1;
+        __atomic_fetch_add(&(sem->counter), 1, __ATOMIC_ACQ_REL);
+
+        errno = 0;
+        res = syscall(SYS_futex, &(sem->counter), FUTEX_WAKE_PRIVATE, 1);
+        if(res < 0) {
+            goto fsemaphore_post_error;
+        }
+        res = 0;
+
         res = fmutex_unlock(sem->mutex);
         if(res != 0) {
             goto fsemaphore_post_error;
         }
         mutex_locked = false;
-
-        errno = 0;
-        res = syscall(SYS_futex, &(sem->counter), FUTEX_WAKE_PRIVATE, 1);
-        if(res < 0) {
-            printf("error with FUTEX_WAKE in %s = %d\n", __func__, errno);
-            goto fsemaphore_post_error;
-        }
     }
 
 fsemaphore_post_error:
@@ -222,24 +222,44 @@ fsemaphore_post_error:
         fmutex_unlock(sem->mutex);
         mutex_locked = false;
     }
+    if(res != 0) {
+        printf("error with FUTEX_WAKE in %s = %d\n", __func__, errno);
+    }
     return 0;
 }
 
 int fsemaphore_reset(Fsemaphore *sem) {
-    int res;
+    long res;
+    bool mutex_locked = false;
     if(sem == NULL) {
         return EINVAL;
     }
 
     res = fmutex_lock(sem->mutex);
     if(res != 0) {
-        return res;
+        goto fsemaphore_reset_error;
     }
-    sem->counter = sem->max;
+    mutex_locked = true;
+    __atomic_store_n(&(sem->counter), sem->max, __ATOMIC_RELEASE);
+    errno = 0;
+    res = syscall(SYS_futex, &(sem->counter), FUTEX_WAKE_PRIVATE, sem->max);
+    if(res < 0) {
+        goto fsemaphore_reset_error;
+    }
+    res = 0;
     res = fmutex_unlock(sem->mutex);
     if(res != 0) {
         return res;
     }
+    mutex_locked = false;
 
-    return 0;
+fsemaphore_reset_error:
+    if(mutex_locked) {
+        fmutex_unlock(sem->mutex);
+        mutex_locked = false;
+    }
+    if(res != 0) {
+        printf("error with FUTEX_WAKE in %s = %d\n", __func__, errno);
+    }
+    return res;
 }

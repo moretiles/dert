@@ -2,6 +2,7 @@
 
 #include <fmutex.h>
 
+#include <assert.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -147,7 +148,8 @@ int fmutex_unlock(Fmutex *mutex) {
             return res;
         }
     } else {
-        return EBADE;
+        // expected is update with the current value on failure
+        assert(expected == false);
     }
 
     return 0;

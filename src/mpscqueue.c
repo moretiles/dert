@@ -90,7 +90,7 @@ int mpscqueue_enqueue(Mpscqueue *queue, void *src) {
     }
 
     // fail if full
-    if(queue->len == queue->cap) {
+    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == queue->cap) {
         return 3;
     }
 
@@ -130,7 +130,7 @@ int mpscqueue_front(Mpscqueue *queue, void *dest) {
         return 1;
     }
 
-    if(queue->len == 0) {
+    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == 0) {
         return 2;
     }
 
@@ -149,7 +149,7 @@ void *mpscqueue_front_direct(Mpscqueue *queue) {
         return NULL;
     }
 
-    if(queue->len == 0) {
+    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == 0) {
         return NULL;
     }
 
@@ -161,7 +161,7 @@ size_t mpscqueue_len(Mpscqueue *queue) {
         return 0;
     }
 
-    return queue->len;
+    return __atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE);
 }
 
 size_t mpscqueue_cap(Mpscqueue *queue) {
