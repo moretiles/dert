@@ -590,7 +590,7 @@ void *tpoolrr_test_handler3(Tpoolrr *pool, void *varg) {
     pthread_mutex_unlock(arg->mutex);
 
     // do nothing with pool
-    pool = pool;
+    (void)(pool);
 
     return NULL;
 }

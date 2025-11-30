@@ -307,7 +307,7 @@ void must_pthread_join(Tpoolrr *pool, size_t index, void **retval) {
 #endif
 }
 
-uint64_t monotonic_time_now() {
+uint64_t monotonic_time_now(void) {
     struct timespec spec;
     uint64_t seconds, milliseconds;
 
@@ -947,7 +947,7 @@ int tpoolrr_handler_call(Tpoolrr *pool, void *arg, void **retval) {
 }
 
 size_t tpoolrr_threads_active(Tpoolrr *pool) {
-    size_t total;
+    size_t total = 0;
     int res;
 
     if (pool == NULL) {
@@ -968,12 +968,12 @@ size_t tpoolrr_threads_active(Tpoolrr *pool) {
         }
     }
 
-    return 0;
+    return total;
 }
 
 size_t tpoolrr_threads_inactive(Tpoolrr *pool) {
     int res;
-    size_t total;
+    size_t total = 0;
 
     if (pool == NULL) {
         return 0;
@@ -993,7 +993,7 @@ size_t tpoolrr_threads_inactive(Tpoolrr *pool) {
         }
     }
 
-    return 0;
+    return total;
 }
 
 size_t tpoolrr_threads_total(Tpoolrr *pool) {
@@ -1005,7 +1005,7 @@ size_t tpoolrr_threads_total(Tpoolrr *pool) {
 }
 
 size_t tpoolrr_jobs_queued(Tpoolrr *pool) {
-    size_t total;
+    size_t total = 0;
 
     if(pool == NULL) {
         return 0;
@@ -1019,7 +1019,7 @@ size_t tpoolrr_jobs_queued(Tpoolrr *pool) {
 }
 
 size_t tpoolrr_jobs_empty(Tpoolrr *pool) {
-    size_t total;
+    size_t total = 0;
 
     if(pool == NULL) {
         return 0;

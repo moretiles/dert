@@ -18,11 +18,11 @@
 uint8_t vht_hash_salt[VHT_HASH_SALT_LEN_EXPECTED] = { 0 };
 
 // Set actual value of vht_hash_salt
-void __attribute__((constructor)) vht_hash_salt_set_or_die();
+void __attribute__((constructor)) vht_hash_salt_set_or_die(void);
 
 // Set salt to random value
 // If this fails we do not want to start
-void vht_hash_salt_set_or_die() {
+void vht_hash_salt_set_or_die(void) {
     assert(getrandom(vht_hash_salt, VHT_HASH_SALT_LEN_EXPECTED, 0) == VHT_HASH_SALT_LEN_EXPECTED);
 }
 

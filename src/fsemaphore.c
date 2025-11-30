@@ -38,8 +38,8 @@ Fsemaphore *fsemaphore_create(uint64_t val, uint64_t max) {
 
 size_t fsemaphore_advise(uint64_t val, uint64_t max) {
     // eliminate unused warnings
-    val = val;
-    max = max;
+    (void)(val);
+    (void)(max);
 
     return 1 * ((1 * sizeof(Fsemaphore)) +
                 (fmutex_advise()));
@@ -47,8 +47,8 @@ size_t fsemaphore_advise(uint64_t val, uint64_t max) {
 
 size_t fsemaphore_advisev(size_t num_sems, uint64_t val, uint64_t max) {
     // eliminate unused warnings
-    val = val;
-    max = max;
+    (void)(val);
+    (void)(max);
 
     return num_sems * ((1 * sizeof(Fsemaphore)) +
                        (fmutex_advise()));

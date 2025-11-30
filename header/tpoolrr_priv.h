@@ -12,7 +12,7 @@ struct tpoolrr_worker_arg {
 };
 
 // Monotonic time in milliseconds
-uint64_t monotonic_time_now();
+uint64_t monotonic_time_now(void);
 
 // Returns job construct assembled from arguments
 struct tpoolrr_job tpoolrr_job_construct(void *((*start_routine) (void*)), void *arg, size_t expiration);

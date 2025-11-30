@@ -15,7 +15,7 @@
 
 // Allocates memory for and create
 // Default state is unlocked
-Fmutex *fmutex_create() {
+Fmutex *fmutex_create(void) {
     void *memory;
     Fmutex *mutex;
 
@@ -34,7 +34,7 @@ Fmutex *fmutex_create() {
 }
 
 // Advise how much memory is needed
-size_t fmutex_advise() {
+size_t fmutex_advise(void) {
     return 1 * sizeof(Fmutex);
 }
 

@@ -21,10 +21,10 @@ typedef struct fmutex {
 
 // Allocates memory for and create
 // Default state is unlocked
-Fmutex *fmutex_create();
+Fmutex *fmutex_create(void);
 
 // Advise how much memory is needed
-size_t fmutex_advise();
+size_t fmutex_advise(void);
 
 // Advise for many
 size_t fmutex_advisev(size_t num_mutexes);
