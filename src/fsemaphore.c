@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
+#include <stdatomic.h>
 
 Fsemaphore *fsemaphore_create(uint64_t val, uint64_t max) {
     Fsemaphore *sem;
@@ -67,14 +68,14 @@ int fsemaphore_init(Fsemaphore **dest, void *memory, uint64_t val, uint64_t max)
         return EINVAL;
     }
 
-    sem->counter = val;
     sem->max = max;
+    atomic_store_explicit(&(sem->counter), val, memory_order_release);
 
     return 0;
 }
 
 int fsemaphore_initv(size_t num_sems, Fsemaphore *dest[], void *memory, uint64_t val, uint64_t max) {
-    Fsemaphore **sems;
+    Fsemaphore *sems;
     if(dest == NULL || memory == NULL || max == 0) {
         return EINVAL;
     }
@@ -83,13 +84,15 @@ int fsemaphore_initv(size_t num_sems, Fsemaphore *dest[], void *memory, uint64_t
     sems = memory;
     for(uint64_t i = 0; i < num_sems; i++) {
         memory = pointer_literal_addition(memory, sizeof(Fsemaphore));
-        if(fmutex_init(&(sems[i]->mutex), memory) != 0) {
+        if(fmutex_init(&(sems[i].mutex), memory) != 0) {
             return EINVAL;
         }
         memory = pointer_literal_addition(memory, fmutex_advise());
 
-        sems[i]->counter = val;
-        sems[i]->max = max;
+        sems[i].max = max;
+        atomic_store_explicit(&(sems[i].counter), val, memory_order_release);
+
+        memory = pointer_literal_addition(memory, fsemaphore_advise(val, max));
     }
 
     return 0;
@@ -101,6 +104,7 @@ void fsemaphore_deinit(Fsemaphore *sem) {
     }
 
     fmutex_deinit(sem->mutex);
+    atomic_store_explicit(&(sem->counter), 0, memory_order_release);
     memset(sem, 0, sizeof(Fsemaphore));
 
     return;
@@ -127,7 +131,7 @@ int fsemaphore_exhaust(Fsemaphore *sem) {
     if(res != 0) {
         return res;
     }
-    __atomic_store_n(&(sem->counter), 0, __ATOMIC_RELEASE);
+    atomic_store_explicit(&(sem->counter), 0, memory_order_release);
     res = fmutex_unlock(sem->mutex);
     if(res != 0) {
         return res;
@@ -150,8 +154,8 @@ int fsemaphore_wait(Fsemaphore *sem) {
             goto fsemaphore_wait_error;
         }
         mutex_locked = true;
-        if(__atomic_load_n(&(sem->counter), __ATOMIC_ACQUIRE) > 0) {
-            __atomic_fetch_sub(&(sem->counter), 1, __ATOMIC_ACQ_REL);
+        if(atomic_load_explicit(&(sem->counter), memory_order_acquire) > 0) {
+            atomic_fetch_sub_explicit(&(sem->counter), 1, memory_order_release);
             decremented = true;
         } else {
             res = fmutex_unlock(sem->mutex);
@@ -197,11 +201,11 @@ int fsemaphore_post(Fsemaphore *sem) {
         goto fsemaphore_post_error;
     }
     mutex_locked = true;
-    if(__atomic_load_n(&(sem->counter), __ATOMIC_ACQUIRE) == sem->max) {
+    if(atomic_load_explicit(&(sem->counter), memory_order_acquire) == sem->max) {
         res = EDEADLK;
         goto fsemaphore_post_error;
     } else {
-        __atomic_fetch_add(&(sem->counter), 1, __ATOMIC_ACQ_REL);
+        atomic_fetch_add_explicit(&(sem->counter), 1, memory_order_release);
 
         errno = 0;
         res = syscall(SYS_futex, &(sem->counter), FUTEX_WAKE_PRIVATE, 1);
@@ -240,7 +244,7 @@ int fsemaphore_reset(Fsemaphore *sem) {
         goto fsemaphore_reset_error;
     }
     mutex_locked = true;
-    __atomic_store_n(&(sem->counter), sem->max, __ATOMIC_RELEASE);
+    atomic_store_explicit(&(sem->counter), sem->max, memory_order_release);
     errno = 0;
     res = syscall(SYS_futex, &(sem->counter), FUTEX_WAKE_PRIVATE, sem->max);
     if(res < 0) {

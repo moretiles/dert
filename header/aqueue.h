@@ -27,7 +27,7 @@ typedef struct aqueue {
     size_t back;
 
     // need to have distinct length field because back may be less than front
-    size_t len;
+    _Atomic size_t len;
 
     // total number of elements this queue can store, if empty
     size_t cap;
