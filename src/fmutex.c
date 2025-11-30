@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
+#include <stdatomic.h>
 
 // Allocates memory for and create
 // Default state is unlocked
@@ -46,27 +47,32 @@ size_t fmutex_advisev(size_t num_mutexes) {
 // Initialize
 // Default state is unlocked
 int fmutex_init(Fmutex **dest, void *memory) {
+    Fmutex *mutex;
     if(dest == NULL || memory == NULL) {
         return EINVAL;
     }
 
     memset(memory, 0, sizeof(Fmutex));
     *dest = memory;
-    (*dest)->locked = false;
+    mutex = *dest;
+    // nothing should be dependent on mutex->locked at this point
+    atomic_store_explicit(&(mutex->locked), false, memory_order_release);
 
     return 0;
 }
 
 // Initialize for many
 int fmutex_initv(size_t num_mutexes, Fmutex *dest[], void *memory) {
+    Fmutex *mutexes;
     if(num_mutexes == 0 || dest == NULL || memory == NULL) {
         return EINVAL;
     }
 
     memset(memory, 0, num_mutexes * sizeof(Fmutex));
     *dest = memory;
+    mutexes = *dest;
     for(size_t i = 0; i < num_mutexes; i++) {
-        dest[i]->locked = false;
+        atomic_store_explicit(&(mutexes[i].locked), false, memory_order_release);
     }
 
     return 0;
@@ -78,7 +84,8 @@ void fmutex_deinit(Fmutex *mutex) {
         return;
     }
 
-    mutex->locked = false;
+    // nothing should be dependent on mutex->locked when this is set
+    atomic_store_explicit(&(mutex->locked), false, memory_order_release);
 
     return;
 }
@@ -109,7 +116,7 @@ int fmutex_lock(Fmutex *mutex) {
         return EINVAL;
     }
 
-    while(!(__atomic_compare_exchange_n(&(mutex->locked), &expected, true, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))) {
+    while(!(atomic_compare_exchange_strong_explicit(&(mutex->locked), &expected, true, memory_order_acq_rel, memory_order_acquire))) {
         // want to perform FUTEX_WAIT_PRIVATE syscall
         // Successful result i.e. result in which sem->counter != 0 can be signaled in two ways
         // First, syscall itself returns 0 if waited then awaken
@@ -139,7 +146,7 @@ int fmutex_unlock(Fmutex *mutex) {
         return EINVAL;
     }
 
-    success = __atomic_compare_exchange_n(&(mutex->locked), &expected, false, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+    success = atomic_compare_exchange_strong_explicit(&(mutex->locked), &expected, false, memory_order_acq_rel, memory_order_acquire);
     if(success) {
         errno = 0;
         res = syscall(SYS_futex, &(mutex->locked), FUTEX_WAKE_PRIVATE, 1);

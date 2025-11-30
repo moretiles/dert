@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 // This implementation is nearly identical to aqueue
 // Main difference is that in order to enqueue producers lock a mutex
@@ -51,9 +52,9 @@ int mpscqueue_init(Mpscqueue *queue, size_t elem_size, size_t num_elems) {
     queue->elem_size = elem_size;
     queue->front = 0;
     queue->back = 0;
-    queue->len = 0;
     queue->cap = num_elems;
     pthread_mutex_init(&(queue->producer_mutex), NULL);
+    atomic_store_explicit(&(queue->len), 0, memory_order_release);
     return 0;
 }
 
@@ -64,6 +65,7 @@ void mpscqueue_deinit(Mpscqueue *queue) {
 
     free(queue->elems);
     pthread_mutex_destroy(&(queue->producer_mutex));
+    atomic_store_explicit(&(queue->len), 0, memory_order_release);
     memset(queue, 0, sizeof(Mpscqueue));
     return;
 }
@@ -90,7 +92,7 @@ int mpscqueue_enqueue(Mpscqueue *queue, void *src) {
     }
 
     // fail if full
-    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == queue->cap) {
+    if(atomic_load_explicit(&(queue->len), memory_order_acquire) == queue->cap) {
         return 3;
     }
 
@@ -99,7 +101,7 @@ int mpscqueue_enqueue(Mpscqueue *queue, void *src) {
         return 4;
     }
     queue->back = mpscqueue_wrap(queue, queue->back + 1);
-    __atomic_add_fetch(&(queue->len), 1LU, __ATOMIC_SEQ_CST);
+    atomic_fetch_add_explicit(&(queue->len), 1LU, memory_order_release);
 
     if(pthread_mutex_unlock(&(queue->producer_mutex)) != 0) {
         return 5;
@@ -118,7 +120,7 @@ int mpscqueue_dequeue(Mpscqueue *queue, void *dest) {
         return 1;
     }
     queue->front = mpscqueue_wrap(queue, queue->front + 1);
-    __atomic_sub_fetch(&(queue->len), 1LU, __ATOMIC_SEQ_CST);
+    atomic_fetch_sub_explicit(&(queue->len), 1LU, memory_order_release);
 
     return 0;
 }
@@ -130,7 +132,7 @@ int mpscqueue_front(Mpscqueue *queue, void *dest) {
         return 1;
     }
 
-    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == 0) {
+    if(atomic_load_explicit(&(queue->len), memory_order_acquire) == 0) {
         return 2;
     }
 
@@ -149,7 +151,7 @@ void *mpscqueue_front_direct(Mpscqueue *queue) {
         return NULL;
     }
 
-    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == 0) {
+    if(atomic_load_explicit(&(queue->len), memory_order_acquire) == 0) {
         return NULL;
     }
 
@@ -161,7 +163,7 @@ size_t mpscqueue_len(Mpscqueue *queue) {
         return 0;
     }
 
-    return __atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE);
+    return atomic_load_explicit(&(queue->len), memory_order_acquire);
 }
 
 size_t mpscqueue_cap(Mpscqueue *queue) {

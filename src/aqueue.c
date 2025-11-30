@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
 
 size_t aqueue_wrap(Aqueue *queue, size_t pos) {
     if(queue == NULL) {
@@ -62,8 +63,8 @@ int aqueue_init(Aqueue **dest, void *memory, size_t elem_size, size_t num_elems)
     queue->elem_size = elem_size;
     queue->front = 0;
     queue->back = 0;
-    __atomic_store_n(&(queue->len), 0, __ATOMIC_RELEASE);
     queue->cap = num_elems;
+    atomic_store_explicit(&(queue->len), 0, memory_order_release);
 
     *dest = queue;
     return 0;
@@ -86,8 +87,8 @@ int aqueue_initv(size_t num_queues, Aqueue *dest[], void *memory, size_t elem_si
         queues[i].elem_size = elem_size;
         queues[i].front = 0;
         queues[i].back = 0;
-        __atomic_store_n(&(queues[i].len), 0, __ATOMIC_RELEASE);
         queues[i].cap = num_elems;
+        atomic_store_explicit(&(queues[i].len), 0, memory_order_release);
         ptr = pointer_literal_addition(ptr, aqueue_advise(elem_size, num_elems) - sizeof(Aqueue));
     }
     return 0;
@@ -98,6 +99,7 @@ void aqueue_deinit(Aqueue *queue) {
         return;
     }
 
+    atomic_store_explicit(&(queue->len), 0, memory_order_release);
     memset(queue, 0, sizeof(Aqueue));
     return;
 }
@@ -120,7 +122,7 @@ int aqueue_enqueue(Aqueue *queue, void *src) {
     }
 
     // fail if full
-    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == queue->cap) {
+    if(atomic_load_explicit(&(queue->len), memory_order_acquire) == queue->cap) {
         return 3;
     }
 
@@ -129,7 +131,7 @@ int aqueue_enqueue(Aqueue *queue, void *src) {
         return 4;
     }
     queue->back = aqueue_wrap(queue, queue->back + 1);
-    __atomic_add_fetch(&(queue->len), 1LU, __ATOMIC_ACQ_REL);
+    atomic_fetch_add_explicit(&(queue->len), 1LU, memory_order_release);
 
     return 0;
 }
@@ -144,7 +146,7 @@ int aqueue_dequeue(Aqueue *queue, void *dest) {
         return 1;
     }
     queue->front = aqueue_wrap(queue, queue->front + 1);
-    __atomic_sub_fetch(&(queue->len), 1LU, __ATOMIC_ACQ_REL);
+    atomic_fetch_sub_explicit(&(queue->len), 1LU, memory_order_release);
 
     return 0;
 }
@@ -156,7 +158,7 @@ int aqueue_front(Aqueue *queue, void *dest) {
         return 1;
     }
 
-    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == 0) {
+    if(atomic_load_explicit(&(queue->len), memory_order_acquire) == 0) {
         return 2;
     }
 
@@ -175,7 +177,7 @@ void *aqueue_front_direct(Aqueue *queue) {
         return NULL;
     }
 
-    if(__atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE) == 0) {
+    if(atomic_load_explicit(&(queue->len), memory_order_acquire) == 0) {
         return NULL;
     }
 
@@ -187,7 +189,7 @@ size_t aqueue_len(Aqueue *queue) {
         return 0;
     }
 
-    return __atomic_load_n(&(queue->len), __ATOMIC_ACQUIRE);
+    return atomic_load_explicit(&(queue->len), memory_order_acquire);
 }
 
 size_t aqueue_cap(Aqueue *queue) {
