@@ -196,6 +196,7 @@ int tbuf_test(void) {
     {
         char *a, *b;
         Tbuf *twin = tbuf_create(99);
+
         assert(twin != NULL);
         assert(tbuf_cap(twin) == 99);
         assert(tbuf_claim(twin, &a, &b) == 0);
@@ -205,12 +206,14 @@ int tbuf_test(void) {
         assert(strcpy(b, "456") != NULL);
         assert(!strcmp(a, "123"));
         assert(!strcmp(b, "456"));
+
         assert(tbuf_swap(twin) == 0);
         assert(tbuf_claim(twin, &a, &b) == 0);
         assert(a != NULL);
         assert(b != NULL);
         assert(!strcmp(a, "456"));
         assert(!strcmp(b, "123"));
+
         assert(tbuf_exchange(twin, &a, &b) == 0);
         assert(a != NULL);
         assert(b != NULL);
@@ -221,6 +224,7 @@ int tbuf_test(void) {
         assert(b != NULL);
         assert(!strcmp(a, "123"));
         assert(!strcmp(b, "456"));
+
         tbuf_destroy(twin);
     }
 
