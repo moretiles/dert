@@ -1,0 +1,2 @@
+This directory contains objects.
+Creating this file so git picks up that it exists.
