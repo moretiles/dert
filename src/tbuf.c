@@ -72,7 +72,9 @@ int tbuf_init(Tbuf **dest, void *memory, size_t cap) {
     B = (char *) next_unused_region;
 
     twin->A = A;
+    twin->A_len = 0;
     twin->B = B;
+    twin->B_len = 0;
     twin->cap = cap;
 
     *dest = twin;
@@ -91,8 +93,10 @@ int tbuf_initv(size_t num_bufs, Tbuf *dest[], void *memory, size_t cap) {
     ptr = pointer_literal_addition(memory, num_bufs * sizeof(Tbuf));
     for(size_t i = 0; i < num_bufs; i++) {
         twins[i].A = (char *) ptr;
+        twins[i].A_len = 0;
         ptr = pointer_literal_addition(ptr, (cap * sizeof(char)));
         twins[i].B = (char *) ptr;
+        twins[i].B_len = 0;
         ptr = pointer_literal_addition(ptr, (cap * sizeof(char)));
         twins[i].cap = cap;
     }
@@ -127,21 +131,32 @@ int tbuf_claim(Tbuf *twin, char **A, char **B) {
         return EINVAL;
     }
 
+    // claim buffers
     *A = twin->A;
     *B = twin->B;
+
+    // zero length
+    twin->A_len = 0;
+    twin->B_len = 0;
+
     return 0;
 }
 
 int tbuf_swap(Tbuf *twin) {
-    char *tmp;
+    char *tmp_ptr;
+    size_t tmp_len;
 
     if(twin == NULL) {
         return EINVAL;
     }
 
-    tmp = twin->A;
+    tmp_ptr = twin->A;
     twin->A = twin->B;
-    twin->B = tmp;
+    twin->B = tmp_ptr;
+
+    tmp_len = twin->A_len;
+    twin->A_len = twin->B_len;
+    twin->B_len = tmp_len;
 
     return 0;
 }

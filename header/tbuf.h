@@ -13,9 +13,17 @@
 typedef struct tbuf {
     // A buffer
     char *A;
+
+    // Current length of the A buffer
+    // A_len < cap otherwise buffer overflow
+    size_t A_len;
     
     // B buffer
     char *B;
+
+    // Current length of the B buffer
+    // B_len < cap otherwise buffer overflow
+    size_t B_len;
 
     // Number of chars that can be stored in each buffer
     size_t cap;
