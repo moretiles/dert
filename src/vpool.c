@@ -2,264 +2,216 @@
 #include <vpool_priv.h>
 #include <pointerarith.h>
 
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
-#include <pthread.h>
+#include <errno.h>
 
-Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functions){
-    return _vpool_create(num_items, elem_size, functions, NULL, NULL);
+unsigned int fib(unsigned int n) {
+    if (n <= 1) {
+        return n;
+    }
+
+    unsigned int i = 1, j = 0, tmp;
+    while (i < n) {
+        tmp = i;
+        i += j;
+        j = tmp;
+
+        i++;
+    }
+
+    return i;
 }
 
-Vpool *_vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functions, Vpool *prev, pthread_mutex_t *mutex){
-    if(num_items == 0 || elem_size == 0){
+Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_kind kind) {
+    return _vpool_create(num_items, elem_size, kind, NULL);
+}
+
+Vpool *_vpool_create(size_t num_items, size_t elem_size, Vpool_kind kind, Vpool *prev) {
+    if(num_items == 0 || elem_size == 0 || (kind == VPOOL_KIND_STATIC && prev != NULL)) {
         return NULL;
     }
 
-    Vpool *vpool_created = calloc(1, sizeof(Vpool));
-    if(vpool_created == NULL){
+    Vpool *vpool_created = calloc(1, vpool_advise(num_items, elem_size));
+    if(vpool_created == NULL) {
         return NULL;
     }
 
-    if(elem_size < sizeof(void*)){
-        elem_size = sizeof(void*);
-    }
-    void **const items = calloc(num_items, elem_size);
-    if(items == NULL){
+    if(_vpool_init(&vpool_created, vpool_created, num_items, elem_size, kind, prev) != 0) {
         free(vpool_created);
-        return NULL;
+        vpool_created = NULL;
     }
-
-    if(mutex == NULL){
-        mutex = calloc(1, sizeof(pthread_mutex_t));
-        if(mutex == NULL){
-            free(items);
-            free(vpool_created);
-            return NULL;
-        }
-        pthread_mutex_init(mutex, NULL);
-    }
-
-    /*
-     * Use memcpy because struct vpool has const members. Strange but works.
-     * If gcc/clang get better at identifying const access may need to make changes.
-     */
-    memcpy(vpool_created, &((Vpool){items, elem_size, 0, num_items, NULL, functions, prev, mutex}), sizeof(Vpool));
 
     return vpool_created;
 }
 
-void *vpool_alloc(Vpool **pool_ptr){
-    return _vpool_alloc(pool_ptr, false);
+size_t vpool_advise(size_t num_items, size_t elem_size) {
+    if (elem_size < sizeof(void*)) {
+        elem_size = sizeof(void*);
+    }
+
+    return 1 * (sizeof(Vpool) +
+                (num_items * elem_size));
 }
 
-void *_vpool_alloc(Vpool **pool_ptr, bool already_holding_mutex){
-    if(pool_ptr == NULL){
-        return NULL;
+int vpool_init(Vpool **dest, void *memory, size_t num_items, size_t elem_size, Vpool_kind kind) {
+    return _vpool_init(dest, memory, num_items, elem_size, kind, NULL);
+}
+
+int _vpool_init(Vpool **dest, void *memory, size_t num_items, size_t elem_size, Vpool_kind kind, Vpool *prev) {
+    Vpool *pool;
+    if(dest == NULL || *dest == NULL || memory == NULL || num_items == 0 || elem_size == 0 ||
+            (kind == VPOOL_KIND_STATIC && prev != NULL)) {
+        return EINVAL;
     }
 
-    Vpool *pool = *pool_ptr;
-    if(pool == NULL){
-        return NULL;
+    if (elem_size < sizeof(void*)) {
+        elem_size = sizeof(void*);
     }
 
-    // avoid locking twice when _vpool_alloc called recursively
-    if(!already_holding_mutex){
-        pthread_mutex_lock(pool->mutex);
+    pool = memory;
+    pool->items = pointer_literal_addition(pool, sizeof(Vpool));
+    pool->element_size = elem_size;
+    pool->stored = 0;
+    pool->capacity = num_items;
+    pool->next_free = NULL;
+    pool->kind = kind;
+    pool->prev = prev;
+
+    return 0;
+}
+
+int vpool_deinit(Vpool *pool) {
+    Vpool *pool_iterate, *prev;
+
+    if (pool == NULL) {
+        return 0;
+    }
+
+    // DO NOT FREE THE FIRST VPOOL
+    switch(pool->kind) {
+    case VPOOL_KIND_DYNAMIC:
+        for(
+            pool_iterate = pool->prev;
+            pool_iterate != NULL;
+            pool_iterate = prev
+        ) {
+            prev = pool_iterate->prev;
+            free(pool_iterate);
+        }
+        break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+int vpool_destroy(Vpool *pool) {
+    if (pool == NULL) {
+        return 0;
+    }
+
+    // Free previous if VPOOL_KIND_DYNAMIC
+    if(vpool_deinit(pool) != 0) {
+        return EINVAL;
+    }
+
+    // Now free first pool
+    free(pool);
+
+    return 0;
+}
+
+void *vpool_alloc(Vpool *pool) {
+    Vpool *new_pool, tmp;
+    if(pool == NULL) {
+        return NULL;
     }
 
     void *allocated;
-    if(pool->next_free != NULL){
+    if(pool->next_free != NULL) {
         // pool->next_free is the top of a stack of allocated but not in-use elements
         allocated = pool->next_free;
         memcpy(&(pool->next_free), allocated, sizeof(void*));
         memset(allocated, 0, pool->element_size);
-    } else if(pool->stored == pool->capacity){
-        Vpool *new_pool = _vpool_create(pool->capacity * 2, pool->element_size, pool->functions, pool, pool->mutex);
-        if(new_pool == NULL){
-            return NULL;
-        }
+    } else if(vpool_full(pool)) {
+        switch(pool->kind) {
+        case VPOOL_KIND_DYNAMIC:
+            new_pool = calloc(1, vpool_advise(2 * pool->capacity, pool->element_size));
+            if(new_pool == NULL) {
+                return NULL;
+            }
+            if(_vpool_init(&new_pool, new_pool, 2 * pool->capacity, pool->element_size, VPOOL_KIND_DYNAMIC, new_pool) != 0) {
+                free(new_pool);
+                new_pool = NULL;
+                return NULL;
+            }
 
-        *pool_ptr = new_pool;
-        allocated = _vpool_alloc(pool_ptr, true);
+            memcpy(&tmp, pool, sizeof(Vpool));
+            memcpy(pool, new_pool, sizeof(Vpool));
+            memcpy(new_pool, &tmp, sizeof(Vpool));
+
+            allocated = vpool_alloc(pool);
+            break;
+        case VPOOL_KIND_STATIC:
+        case VPOOL_KIND_GUIDED:
+        default:
+            // If invalid or VPOOL_KIND_STATIC then no more allocation can occur until some elements deallocate
+            // The caller decides what to do if the pool is VPOOL_KIND_GUIDED
+
+            return NULL;
+            break;
+        }
     } else {
         // pointer addition in this case scales by 1
         allocated = pointer_literal_addition(pool->items, pool->stored * pool->element_size);
         pool->stored++;
     }
 
-    if(pool->functions != NULL && pool->functions->initialize_element != NULL){
-        pool->functions->initialize_element(allocated);
-    }
-
-    // avoid unlocking early/twice when _vpool_alloc called recursively
-    if(!already_holding_mutex){
-        pthread_mutex_unlock(pool->mutex);
-    }
-
     return allocated;
 }
 
-int vpool_dealloc(Vpool **pool_ptr, void *elem){
-    if(pool_ptr == NULL){
-        return 1;
-    }
-
-    Vpool *pool = *pool_ptr;
-    if(pool == NULL || elem == NULL){
+int vpool_dealloc(Vpool *pool, void *elem) {
+    if(pool == NULL || elem == NULL) {
         return 2;
     }
 
-    pthread_mutex_lock(pool->mutex);
-
-    if(pool->functions != NULL && pool->functions->deinitialize_element != NULL){
-        pool->functions->deinitialize_element(elem);
-    }
     memset(elem, 0, sizeof(void*));
 
     // pool->next_free is the top of a stack of allocated but not in-use elements
-    if(pool->next_free != NULL){
+    if(pool->next_free != NULL) {
         memcpy(elem, &(pool->next_free), sizeof(void*));
     }
     pool->next_free = elem;
 
-    pthread_mutex_unlock(pool->mutex);
-
     return 0;
 }
 
-int vpool_destroy(Vpool **pool_ptr) {
-    void **pool_free_pointers;
-    Vpool **pools;
-    size_t pool_free_pointers_length, pools_length;
-
-    if (pool_ptr == NULL) {
-        return 0;
+bool vpool_full(Vpool *pool) {
+    if(pool == NULL) {
+        return false;
     }
 
-    Vpool *pool = *pool_ptr;
-    if (pool == NULL) {
-        return 0;
+    return pool->stored == pool->capacity;
+}
+
+int vpool_guided_extend(Vpool *pool, void *memory, size_t memory_size) {
+    Vpool tmp;
+    size_t num_items;
+    if(pool == NULL || memory == NULL || pool->kind == VPOOL_KIND_STATIC) {
+        return EINVAL;
     }
 
-    pthread_mutex_lock(pool->mutex);
-
-    if(pool->functions != NULL && pool->functions->deinitialize_element != NULL){
-        // Create array of all currently deallocated pointers from pool and children sorted by pointer magnitude.
-        {
-            pool_free_pointers_length = 0;
-            size_t pool_free_pointers_capacity = 64;
-            pool_free_pointers = calloc(pool_free_pointers_capacity, sizeof(void*));
-            if(pool_free_pointers == NULL){
-                return 1;
-            }
-
-            void **ptr = NULL;
-            for(ptr = pool->next_free; ptr != NULL; ptr = *ptr){
-                if(pool_free_pointers_length == pool_free_pointers_capacity){
-                    pool_free_pointers_capacity *= 2;
-                    pool_free_pointers = realloc(pool_free_pointers, pool_free_pointers_capacity * sizeof(void*));
-                    if(pool_free_pointers == NULL){
-                        return 3;
-                    }
-                    memset(pool_free_pointers + (pool_free_pointers_length * pool->element_size),
-                            0,
-                            (pool_free_pointers_capacity - pool_free_pointers_length) * pool->element_size);
-                }
-                pool_free_pointers[pool_free_pointers_length++] = ptr;
-            }
-
-            if(pool_free_pointers_length > 1){
-                qsort(pool_free_pointers, pool_free_pointers_length, pool->element_size, compare_pointers);
-            }
-        }
-
-        // Create array of all current pools sorted by the magnitude of their starting pointer
-        {
-            pools_length = 0;
-            size_t pools_capacity = 64;
-            pools = calloc(pools_capacity, sizeof(void*));
-            if(pools == NULL){
-                free(pool_free_pointers);
-                return 2;
-            }
-
-            Vpool *pool_iterate = NULL;
-            for(pool_iterate = pool; pool_iterate != NULL; pool_iterate = pool_iterate->prev){
-                if(pools_length == pools_capacity){
-                    pools_capacity *= 2;
-                    pools = realloc(pools, pools_capacity * sizeof(void*));
-                    if(pools == NULL){
-                        return 4;
-                    }
-                    memset(pools + (pools_length * pool->element_size),
-                            0,
-                            (pools_capacity - pools_length) * pool->element_size);
-                }
-                pools[pools_length++] = pool_iterate;
-            }
-
-            if(pools_length > 1){
-                qsort(pools, pools_length, sizeof(Vpool*), vpool_compare_items_address);
-            }
-        }
-
-        // Iterate over each pool's items deinitializing elements that have not already been deallocated.
-        {
-            size_t i = 0, j = 0;
-            void **ptr;
-            for(i = 0; i < pools_length; i++){
-                for(ptr = pools[i]->items;
-                        ptr < (pools[i]->items + pools[i]->stored);
-                        ptr++){
-                    if(ptr == pool_free_pointers[j]){
-                        if((j + 1) < pool_free_pointers_length){
-                            j++;
-                        }
-                    } else {
-                        pool->functions->deinitialize_element(ptr);
-                    }
-                }
-            }
-            free(pool_free_pointers);
-            free(pools);
-        }
+    num_items = (memory_size - sizeof(Vpool)) / pool->element_size;
+    if(_vpool_init((Vpool**) &memory, memory, num_items, pool->element_size, VPOOL_KIND_GUIDED, memory) != 0) {
+        return EINVAL;
     }
-
-    // call free and NULL out pool_ptr
-    {
-        pthread_mutex_t *hold = pool->mutex;
-        Vpool *pool_iterate, *prev = NULL;
-        for(pool_iterate = pool; pool_iterate != NULL; pool_iterate = prev){
-            prev = pool_iterate->prev;
-            free(pool_iterate->items);
-            free(pool_iterate);
-        }
-
-        *pool_ptr = NULL;
-        pthread_mutex_unlock(hold);
-        pthread_mutex_destroy(hold);
-        free(hold);
-    }
+    memcpy(&tmp, pool, sizeof(Vpool));
+    memcpy(pool, memory, sizeof(Vpool));
+    memcpy(memory, &tmp, sizeof(Vpool));
 
     return 0;
-}
-
-
-int compare_pointers(const void *a, const void *b) {
-    if(a == b){
-        return 0;
-    } else if (a > b){
-        return 1;
-    } else {
-        return -1;
-    }
-}
-
-int vpool_compare_items_address(const void *a, const void *b){
-    if(a == NULL || b == NULL){
-        return 0;
-    }
-
-    return compare_pointers(((Vpool*) a)->items, ((Vpool*) b)->items);
 }

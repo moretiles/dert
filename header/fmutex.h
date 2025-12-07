@@ -7,12 +7,12 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifndef DERT_FMUTEX
-#define DERT_FMUTEX 1
 typedef struct fmutex {
     // Linux FUTEX syscall requires a uint32_t*
     // So, use this uint32_t as a boolean
@@ -53,4 +53,3 @@ int fmutex_lock(Fmutex *mutex);
 // unlock mutex
 // fails if mutex is already unlocked
 int fmutex_unlock(Fmutex *mutex);
-#endif

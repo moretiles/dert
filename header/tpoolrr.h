@@ -1,9 +1,3 @@
-#include <aqueue.h>
-
-#include <stddef.h>
-#include <stdint.h>
-#include <pthread.h>
-
 /*
  * tpoolrr.h -- Thread pool in which workers are served tasks using a round-robin task schedule
  * This thread pool is implemented using pthreads and aims to support Unix-based operating systems.
@@ -22,6 +16,14 @@
  * https://github.com/moretiles/dert
  * Project licensed under Apache-2.0 license
  */
+
+#pragma once
+
+#include <aqueue.h>
+
+#include <stddef.h>
+#include <stdint.h>
+#include <pthread.h>
 
 #ifndef TPOOLRR_LET_UNRECOVERABLE_ERRORS_FAIL_SILENTLY
 #define TPOOLRR_LET_UNRECOVERABLE_ERRORS_FAIL_SILENTLY (0)

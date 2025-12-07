@@ -6,6 +6,8 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
 #include <stddef.h>
 
 // Used to wrap calculations involving front and back

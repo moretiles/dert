@@ -6,6 +6,8 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -19,8 +21,6 @@
 #define ERR_QUEUE_FILE_READ_INCOMPLETE (7)
 #define ERR_QUEUE_FILE_WRITE_INCOMPLETE (8)
 
-#ifndef FQUEUE_STRUCT
-#define FQUEUE_STRUCT 1
 typedef struct fqueue {
     //  File associated with queue
     FILE *file;
@@ -37,7 +37,6 @@ typedef struct fqueue {
     // Total number of bytes that can be stored in fqueue->bytes
     size_t cap;
 } Fqueue;
-#endif
 
 // Allocates memory for and initializes a Fqueue.
 Fqueue *fqueue_create(size_t num_bytes, const char *file_name, const char *mode);

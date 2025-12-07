@@ -8,11 +8,11 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
 #include <stddef.h>
 #include <stdbool.h>
 
-#ifndef DERT_AQUEUE
-#define DERT_AQUEUE 1
 typedef struct aqueue {
     // elements that are in the queue placed here
     void *elems;
@@ -86,4 +86,3 @@ size_t aqueue_len(Aqueue *queue);
  * Calculated as number of elements the queue was told to allocate when creating/initializing.
  */
 size_t aqueue_cap(Aqueue *queue);
-#endif

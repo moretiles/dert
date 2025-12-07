@@ -6,6 +6,8 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
 #include <stddef.h>
 
 void *pointer_literal_addition(void *ptr, size_t increment);
