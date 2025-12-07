@@ -6,6 +6,8 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
 #include <stddef.h>
 #include <stdint.h>
 

@@ -75,15 +75,15 @@ obj/siphash.o: SipHash/siphash.c SipHash/siphash*.h
 	${CC} ${OPTIMIZE} ${CFLAGS} SipHash/siphash.c -c -o obj/siphash.o ${INCLUDE}
 
 ## tests and housekeeping
-.PHONY: test
-test:
-	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/fmutex.c src/fsemaphore.c src/test.c src/pointerarith.c -o test ${INCLUDE}
+.PHONY: test test_asan test_tsan
+test: libdert.a
+	${CC} ${CFLAGS} ${DEBUG} src/*.c SipHash/siphash.c -o test ${INCLUDE}
 
-test_asan:
-	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/fmutex.c src/fsemaphore.c src/test.c src/pointerarith.c -o test ${INCLUDE} -fsanitize=address
+test_asan: libdert.a
+	${CC} ${CFLAGS} ${DEBUG} src/*.c SipHash/siphash.c -o test ${INCLUDE} -fsanitize=address
 
-test_tsan:
-	${CC} ${CFLAGS} ${DEBUG} src/vstack.c src/vqueue.c src/vdll.c src/tbuf.c src/varray.c src/varena.c src/vpool.c SipHash/siphash.c src/vht.c src/fqueue.c src/aqueue.c src/mpscqueue.c src/tpoolrr.c src/fmutex.c src/fsemaphore.c src/test.c src/pointerarith.c -o test ${INCLUDE} -fsanitize=thread
+test_tsan: libdert.a
+	${CC} ${CFLAGS} ${DEBUG} src/*.c SipHash/siphash.c -o test ${INCLUDE} -fsanitize=thread
 
 .PHONY: tags
 tags:

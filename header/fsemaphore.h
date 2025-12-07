@@ -7,14 +7,14 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
 #include <fmutex.h>
 
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifndef DERT_FSEMAPHORE
-#define DERT_FSEMAPHORE 1
 typedef struct fsemaphore {
     Fmutex *mutex;
     _Atomic uint64_t counter;
@@ -59,4 +59,3 @@ int fsemaphore_post(Fsemaphore *sem);
 
 // Set count for sem to its max
 int fsemaphore_reset(Fsemaphore *sem);
-#endif

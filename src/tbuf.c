@@ -126,22 +126,6 @@ void tbuf_destroy(Tbuf *twin) {
     return;
 }
 
-int tbuf_claim(Tbuf *twin, char **A, char **B) {
-    if(twin == NULL || A == NULL || B == NULL) {
-        return EINVAL;
-    }
-
-    // claim buffers
-    *A = twin->A;
-    *B = twin->B;
-
-    // zero length
-    twin->A_len = 0;
-    twin->B_len = 0;
-
-    return 0;
-}
-
 int tbuf_swap(Tbuf *twin) {
     char *tmp_ptr;
     size_t tmp_len;
@@ -161,25 +145,36 @@ int tbuf_swap(Tbuf *twin) {
     return 0;
 }
 
-int tbuf_exchange(Tbuf *twin, char **A, char **B) {
-    int res = 0;
-
-    if(twin == NULL || A == NULL || B == NULL) {
-        return EINVAL;
+char *tbuf_A(Tbuf *twin) {
+    if(twin == NULL) {
+        return NULL;
     }
 
-    res = tbuf_claim(twin, A, B);
-    if(res != 0) {
-        goto tbuf_exchange_error;
+    return &(twin->A[twin->A_len]);
+}
+
+char *tbuf_B(Tbuf *twin) {
+    if(twin == NULL) {
+        return NULL;
     }
 
-    res = tbuf_swap(twin);
-    if(res != 0) {
-        goto tbuf_exchange_error;
+    return &(twin->B[twin->B_len]);
+}
+
+size_t tbuf_A_unused(Tbuf *twin) {
+    if(twin == NULL) {
+        return 0;
     }
 
-tbuf_exchange_error:
-    return res;
+    return twin->cap - twin->A_len;
+}
+
+size_t tbuf_B_unused(Tbuf *twin) {
+    if(twin == NULL) {
+        return 0;
+    }
+
+    return twin->cap - twin->B_len;
 }
 
 size_t tbuf_cap(Tbuf *twin) {

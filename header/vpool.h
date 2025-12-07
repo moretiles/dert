@@ -6,22 +6,24 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <pthread.h>
 
-// All structs that are typedefined are public.
+// Controls how to handle when the pool is out of memory
+typedef enum vpool_kind {
+    // Total amount of memory allocated for items cannot change unless deinit/destroy called
+    VPOOL_KIND_STATIC,
 
-/*
- * For operating on a given type, users can choose to implement these functions.
- */
-typedef struct vpool_functions {
-    // int initialize_element(void* element);
-    int (*initialize_element)(void*);
+    // Total amount of memory can be increased using extend
+    VPOOL_KIND_GUIDED,
 
-    // int deinitialize_element(void* element);
-    int (*deinitialize_element)(void*);
-} Vpool_functions;
+    // Total amount of memory grows on demand
+    VPOOL_KIND_DYNAMIC
+} Vpool_kind;
 
 /*
  * Pool that can allocate memory should it run out.
@@ -29,54 +31,61 @@ typedef struct vpool_functions {
  */
 typedef struct vpool {
     // items stores what we allocate.
-    void **const items;
+    void **items;
 
     // how large each element is. Must be greater-than-or-equal to sizeof(void*).
-    const size_t element_size;
+    size_t element_size;
 
     // how many elements currently stored.
     size_t stored;
 
     // how many items we can possible store without reallocating.
-    const size_t capacity;
+    size_t capacity;
 
     // next_free may may be NULL or point to anused region of memory in items.
     void *next_free;
 
-    // function pointers required to support various types with Vpools.
-    struct vpool_functions *const functions;
+    // Kind of Vpool
+    Vpool_kind kind;
 
-    // Previous pool
+    // Only not NULL when VPOOL_KIND_DYNAMIC
     struct vpool *prev;
-
-    // Mutex to prevent race conditions. Parent and all children must share same mutex.
-    pthread_mutex_t *const mutex;
 } Vpool;
 
-/*
- * Create new pool with num_items each of size elem_size, use provided functions.
- * Non-null pointer returned on success.
- */
-Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_functions *functions);
+// Create new pool with num_items each of size elem_size
+// Non-null pointer returned on success.
+Vpool *vpool_create(size_t num_items, size_t elem_size, Vpool_kind kind);
+
+// Advise how much memory is needed
+size_t vpool_advise(size_t num_items, size_t elem_size);
+
+// Initialize new pool
+int vpool_init(Vpool **dest, void *memory, size_t num_items, size_t elem_size, Vpool_kind kind);
+
+// Deinitialize existing pool
+int vpool_deinit(Vpool *pool_ptr);
+
+// Destroy existing pool.
+int vpool_destroy(Vpool *pool_ptr);
 
 /*
  * Obtain new allocation from pool.
  * Initialization function called before returning.
  * Non-null pointer returned on success.
  */
-void *vpool_alloc(Vpool **pool_ptr);
+void *vpool_alloc(Vpool *pool);
 
 /*
  * Deallocate existing element from pool.
  * Deinitialization function called on (*elem_ptr).
  * 0 on success.
  */
-int vpool_dealloc(Vpool **pool_ptr, void *elem_ptr);
+int vpool_dealloc(Vpool *pool, void *elem_ptr);
 
-/*
- * Destroy existing pool.
- * Deinitialization function called on all not deallocated elements of pool.
- * Requires additional allocation of memory... if memory highly limited, consider exiting.
- * Returns 0 and sets *pool_ptr = NULL on success.
- */
-int vpool_destroy(Vpool **pool_ptr);
+// Returns true if pool is full
+// Always returns false if pool is of kind VPOOL_KIND_DYNAMIC
+bool vpool_full(Vpool *pool);
+
+// Allows you to extend a Vpool of kind VPOOL_KIND_GUIDED when at capacity (vpool_full returns true)
+// Memory is not kept track of and freed later when added using this method
+int vpool_guided_extend(Vpool *pool, void *memory, size_t memory_size);

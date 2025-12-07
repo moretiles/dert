@@ -1,5 +1,3 @@
-#include <stddef.h>
-
 /*
  * tbuf.h -- Twin buffer. Useful for chaining together operations in which there are input/output buffers
  * This structure is not thread safe unless synchronization is done to make sure only one thread acts on it at a time
@@ -9,6 +7,10 @@
  * Project licensed under Apache-2.0 license
  */
 
+#pragma once
+
+#include <stddef.h>
+
 // Twin buffer
 typedef struct tbuf {
     // A buffer
@@ -17,7 +19,7 @@ typedef struct tbuf {
     // Current length of the A buffer
     // A_len < cap otherwise buffer overflow
     size_t A_len;
-    
+
     // B buffer
     char *B;
 
@@ -54,14 +56,17 @@ void tbuf_deinit(Tbuf *twin);
  */
 void tbuf_destroy(Tbuf *twin);
 
-// Derefernce and set A to the first buffer and B to the second buffer
-int tbuf_claim(Tbuf *twin, char **A, char **B);
-
 // The A buffer of twin now points to what was B, the B buffer of twin now points to what was A
 int tbuf_swap(Tbuf *twin);
 
-// Equivalent to calling tbuf_claim and immediately after that tbuf_swap
-int tbuf_exchange(Tbuf *twin, char **A, char **B);
+// Get &(twin->T[twin->T_len])
+char *tbuf_A(Tbuf *twin);
+char *tbuf_B(Tbuf *twin);
+
+// Get number of bytes unused
+// Equivelent to twin->cap - twin->T_len
+size_t tbuf_A_unused(Tbuf *twin);
+size_t tbuf_B_unused(Tbuf *twin);
 
 // Returns the total number of chars that can be stored in either A or B
 size_t tbuf_cap(Tbuf *twin);

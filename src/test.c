@@ -126,35 +126,119 @@ int varena_test(void) {
 }
 
 int vpool_test(void) {
-    Vpool_functions long_functions;
     Vpool *longs;
+    long *a, *b, *c, *d, *e;
 
-    long_functions.initialize_element = init_long;
-    long_functions.deinitialize_element = deinit_long;
-    longs = vpool_create(2, sizeof(long), &long_functions);
+    {
+        longs = vpool_create(3, sizeof(long), VPOOL_KIND_STATIC);
+        assert(longs != NULL);
 
-    long *a = vpool_alloc(&longs);
-    long *b = vpool_alloc(&longs);
-    long *c = vpool_alloc(&longs);
-    assert(a != NULL && b != NULL && c != NULL);
-    assert(a != b && b != c && a != c);
+        a = vpool_alloc(longs);
+        b = vpool_alloc(longs);
+        c = vpool_alloc(longs);
+        d = vpool_alloc(longs);
+        assert(a != NULL && b != NULL && c != NULL);
+        assert(a != b && b != c && a != c);
+        assert(d == NULL);
 
-    *a = 1;
-    *b = 2;
-    *c = 3;
+        *a = 1;
+        *b = 2;
+        *c = 3;
 
-    vpool_dealloc(&longs, a);
-    vpool_dealloc(&longs, b);
-    vpool_dealloc(&longs, c);
+        vpool_dealloc(longs, a);
+        vpool_dealloc(longs, b);
+        vpool_dealloc(longs, c);
 
-    a = vpool_alloc(&longs);
-    b = vpool_alloc(&longs);
-    c = vpool_alloc(&longs);
+        a = vpool_alloc(longs);
+        b = vpool_alloc(longs);
+        c = vpool_alloc(longs);
 
-    vpool_dealloc(&longs, a);
-    vpool_dealloc(&longs, c);
+        vpool_dealloc(longs, a);
+        vpool_dealloc(longs, c);
 
-    vpool_destroy(&longs);
+        vpool_destroy(longs);
+    }
+
+    {
+        longs = vpool_create(1, sizeof(long), VPOOL_KIND_GUIDED);
+        assert(longs != NULL);
+
+        a = vpool_alloc(longs);
+        assert(a != NULL);
+        b = vpool_alloc(longs);
+        assert(b == NULL);
+        assert(vpool_full);
+
+        size_t memory_size = vpool_advise(2, sizeof(long));
+        void *memory = calloc(1, memory_size);
+        assert(memory != NULL);
+        assert(vpool_guided_extend(longs, memory, memory_size) == 0);
+        b = vpool_alloc(longs);
+        c = vpool_alloc(longs);
+        d = vpool_alloc(longs);
+        assert(b != NULL && c != NULL);
+        assert(d == NULL);
+
+        *a = 1;
+        *b = 2;
+        *c = 3;
+
+        vpool_dealloc(longs, a);
+        vpool_dealloc(longs, b);
+        vpool_dealloc(longs, c);
+
+        void *memory2 = calloc(1, memory_size);
+        assert(memory2 != NULL);
+        assert(vpool_guided_extend(longs, memory2, memory_size) == 0);
+
+        a = vpool_alloc(longs);
+        b = vpool_alloc(longs);
+        c = vpool_alloc(longs);
+        d = vpool_alloc(longs);
+        e = vpool_alloc(longs);
+
+        vpool_dealloc(longs, a);
+        vpool_dealloc(longs, c);
+
+        vpool_destroy(longs);
+        free(memory2);
+        free(memory);
+    }
+
+    {
+        longs = vpool_create(1, sizeof(long), VPOOL_KIND_DYNAMIC);
+        assert(longs != NULL);
+
+        a = vpool_alloc(longs);
+        b = vpool_alloc(longs);
+        c = vpool_alloc(longs);
+        d = vpool_alloc(longs);
+        e = vpool_alloc(longs);
+        assert(a != NULL && b != NULL && c != NULL && d != NULL && e != NULL);
+
+        *a = 1;
+        *b = 2;
+        *c = 3;
+        *d = 4;
+        *e = 5;
+
+        vpool_dealloc(longs, a);
+        vpool_dealloc(longs, b);
+        vpool_dealloc(longs, c);
+        vpool_dealloc(longs, d);
+        vpool_dealloc(longs, e);
+
+        a = vpool_alloc(longs);
+        b = vpool_alloc(longs);
+        c = vpool_alloc(longs);
+        d = vpool_alloc(longs);
+        e = vpool_alloc(longs);
+
+        vpool_dealloc(longs, a);
+        vpool_dealloc(longs, c);
+
+        vpool_destroy(longs);
+    }
 
     return 0;
 }
@@ -194,36 +278,50 @@ int vdll_test(void) {
 
 int tbuf_test(void) {
     {
+#define TBUF_TEST_BUF_SIZE (99)
+        const char *TBUF_TEST_STR_A = "0123456789";
+        const char * TBUF_TEST_STR_B = "ABCDEF";
+
         char *a, *b;
-        Tbuf *twin = tbuf_create(99);
+        Tbuf *twin = tbuf_create(TBUF_TEST_BUF_SIZE);
+        assert(tbuf_cap(twin) == TBUF_TEST_BUF_SIZE);
 
         assert(twin != NULL);
-        assert(tbuf_cap(twin) == 99);
-        assert(tbuf_claim(twin, &a, &b) == 0);
+        assert(tbuf_cap(twin) == TBUF_TEST_BUF_SIZE);
+        a = twin->A;
+        b = twin->B;
         assert(a != NULL);
         assert(b != NULL);
-        assert(strcpy(a, "123") != NULL);
-        assert(strcpy(b, "456") != NULL);
-        assert(!strcmp(a, "123"));
-        assert(!strcmp(b, "456"));
+        assert(strcpy(a, TBUF_TEST_STR_A) != NULL);
+        twin->A_len += strlen(TBUF_TEST_STR_A) + 1;
+        twin->B_len += strlen(TBUF_TEST_STR_B) + 1;
+        assert(strcpy(b, TBUF_TEST_STR_B) != NULL);
+        assert(tbuf_A_unused(twin) == TBUF_TEST_BUF_SIZE - strlen(TBUF_TEST_STR_A) - 1);
+        assert(tbuf_B_unused(twin) == TBUF_TEST_BUF_SIZE - strlen(TBUF_TEST_STR_B) - 1);
+        assert(!strcmp(a, TBUF_TEST_STR_A));
+        assert(!strcmp(b, TBUF_TEST_STR_B));
 
         assert(tbuf_swap(twin) == 0);
-        assert(tbuf_claim(twin, &a, &b) == 0);
+        a = twin->A;
+        b = twin->B;
         assert(a != NULL);
         assert(b != NULL);
-        assert(!strcmp(a, "456"));
-        assert(!strcmp(b, "123"));
+        assert(!strcmp(a, TBUF_TEST_STR_B));
+        assert(!strcmp(b, TBUF_TEST_STR_A));
 
-        assert(tbuf_exchange(twin, &a, &b) == 0);
+        a = twin->A;
+        b = twin->B;
         assert(a != NULL);
         assert(b != NULL);
-        assert(!strcmp(a, "456"));
-        assert(!strcmp(b, "123"));
-        assert(tbuf_exchange(twin, &a, &b) == 0);
+        assert(!strcmp(a, TBUF_TEST_STR_B));
+        assert(!strcmp(b, TBUF_TEST_STR_A));
+        assert(tbuf_swap(twin) == 0);
+        a = twin->A;
+        b = twin->B;
         assert(a != NULL);
         assert(b != NULL);
-        assert(!strcmp(a, "123"));
-        assert(!strcmp(b, "456"));
+        assert(!strcmp(a, TBUF_TEST_STR_A));
+        assert(!strcmp(b, TBUF_TEST_STR_B));
 
         tbuf_destroy(twin);
     }
@@ -232,17 +330,20 @@ int tbuf_test(void) {
         char *a, *b, *A, *B;
 #define TBUF_TEST_NUM_TWINS (10)
         Tbuf *twins;
-        void *memory = calloc(1, tbuf_advisev(TBUF_TEST_NUM_TWINS, 99));
+        void *memory = calloc(1, tbuf_advisev(TBUF_TEST_NUM_TWINS, TBUF_TEST_BUF_SIZE));
         assert(memory != NULL);
-        assert(tbuf_initv(TBUF_TEST_NUM_TWINS, &twins, memory, 99) == 0);
+        assert(tbuf_initv(TBUF_TEST_NUM_TWINS, &twins, memory, TBUF_TEST_BUF_SIZE) == 0);
 
         for(size_t i = 0; i < TBUF_TEST_NUM_TWINS; i++) {
-            assert(tbuf_exchange(&(twins[i]), &a, &b) == 0);
+            a = tbuf_A(&(twins[i]));
+            b = tbuf_B(&(twins[i]));
             assert(getrandom(a, 16, 0) == 16);
             assert(getrandom(b, 16, 0) == 16);
             A = a;
             B = b;
-            assert(tbuf_exchange(&(twins[i]), &a, &b) == 0);
+            assert(tbuf_swap(&(twins[i])) == 0);
+            a = tbuf_A(&(twins[i]));
+            b = tbuf_B(&(twins[i]));
             assert(!strcmp(a, B));
             assert(!strcmp(b, A));
             tbuf_deinit(&(twins[i]));
