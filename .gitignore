@@ -18,6 +18,7 @@ tags
 .gdb_history
 
 # build files
+lib/*/
 *.o
 *.a
 
@@ -32,3 +33,9 @@ gmon.out
 
 # tests
 test
+
+#graphviz files
+*.dot
+*.jpeg
+*.png
+*.webp

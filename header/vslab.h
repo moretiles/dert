@@ -36,7 +36,7 @@ typedef struct vslab {
     Vpool *pool;
 
     // regions
-    Vslab_region *regions;
+    struct tree_tree *regions;
 
     // total number of regions
     size_t num_regions;

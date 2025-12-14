@@ -2,6 +2,7 @@
 #include <aqueue_priv.h>
 #include <pointerarith.h>
 
+#include <errno.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -51,7 +52,7 @@ int aqueue_init(Aqueue **dest, void *memory, size_t elem_size, size_t num_elems)
     void *ptr;
 
     if(dest == NULL || memory == NULL || elem_size == 0 || num_elems == 0) {
-        return 1;
+        return EINVAL;
     }
 
     ptr = memory;
@@ -75,7 +76,7 @@ int aqueue_initv(size_t num_queues, Aqueue *dest[], void *memory, size_t elem_si
     Aqueue *queues;
 
     if(dest == NULL || memory == NULL || elem_size == 0 || num_elems == 0) {
-        return 1;
+        return EINVAL;
     }
 
     *dest = memory;
@@ -118,17 +119,17 @@ int aqueue_enqueue(Aqueue *queue, void *src) {
     void *enqueued;
 
     if(queue == NULL || src == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     // fail if full
     if(atomic_load_explicit(&(queue->len), memory_order_acquire) == queue->cap) {
-        return 3;
+        return EXFULL;
     }
 
     enqueued = pointer_literal_addition(queue->elems, queue->elem_size * aqueue_wrap(queue, queue->back));
     if(memcpy(enqueued, src, queue->elem_size) != enqueued) {
-        return 4;
+        return ENOTRECOVERABLE;
     }
     queue->back = aqueue_wrap(queue, queue->back + 1);
     atomic_fetch_add_explicit(&(queue->len), 1LU, memory_order_release);
@@ -138,12 +139,12 @@ int aqueue_enqueue(Aqueue *queue, void *src) {
 
 int aqueue_dequeue(Aqueue *queue, void *dest) {
     if(queue == NULL) {
-        return 0;
+        return EINVAL;
     }
 
     // fails when queue->len == 0
     if(aqueue_front(queue, dest) != 0) {
-        return 1;
+        return ENODATA;
     }
     queue->front = aqueue_wrap(queue, queue->front + 1);
     atomic_fetch_sub_explicit(&(queue->len), 1LU, memory_order_release);
@@ -155,19 +156,21 @@ int aqueue_front(Aqueue *queue, void *dest) {
     void *front;
 
     if(queue == NULL) {
-        return 1;
+        return EINVAL;
     }
 
+    // fails when queue->len == 0
     if(atomic_load_explicit(&(queue->len), memory_order_acquire) == 0) {
-        return 2;
+        return ENODATA;
     }
 
     front = aqueue_front_direct(queue);
     if(front == NULL) {
-        return 3;
+        // the single producer, single consumer use case expected has been broken
+        return ENOTRECOVERABLE;
     }
     if(memcpy(dest, front, queue->elem_size) != dest) {
-        return 4;
+        return ENOTRECOVERABLE;
     }
     return 0;
 }
@@ -177,6 +180,7 @@ void *aqueue_front_direct(Aqueue *queue) {
         return NULL;
     }
 
+    // fails when queue->len == 0
     if(atomic_load_explicit(&(queue->len), memory_order_acquire) == 0) {
         return NULL;
     }

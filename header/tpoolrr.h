@@ -59,8 +59,11 @@ typedef struct tpoolrr {
     // Worker arguments
     struct tpoolrr_worker_arg *worker_args;
 
-    // Job queues, one for each thread
-    Aqueue *job_queues;
+    // Submission queues, one for each thread
+    Aqueue *job_submission_queues;
+
+    // Completion queues, one for each thread
+    Aqueue *job_completion_queues;
 
     // The desired state that the associated thread should be in
     // Should only be accessed when the condition mutex is accquired
@@ -88,6 +91,28 @@ typedef struct tpoolrr {
     // Number of jobs each thread can have queued, set when creating/initializing
     size_t jobs_per_thread;
 } Tpoolrr;
+
+
+// Represents a single job that should be performed by one of the threads
+struct tpoolrr_job {
+    // unique tag to use
+    // cosmetic
+    uint64_t user_tag;
+
+    // used during submission
+    struct {
+        void *((*function)(void*));
+        void *arg;
+        uint64_t expiration;
+    };
+
+    // used during completion
+    struct {
+        size_t thread_assigned_to;
+        void *ret;
+        void *flags;
+    };
+};
 
 typedef void *((*Tpoolrr_fn) (void *));
 
@@ -141,29 +166,53 @@ int tpoolrr_handler_call(Tpoolrr *pool, void *arg, void **retval);
 // Add one job to the thread_pool
 // When freshness is 0 then it is not enforced that this job should start before some time in the future
 // When freshness is not 0 then this job is allowed to run only if less than expiration milliseconds have passed
-int tpoolrr_jobs_add(Tpoolrr *pool, void *((*function)(void*)), void *arg, size_t expiration);
+int tpoolrr_jobs_add(Tpoolrr *pool, uint64_t user_tag, void *((*function)(void*)), void *arg, size_t expiration);
 
 // Add many jobs to the thread_pool
 // When freshness is not 0 then each job added is allowed to run only if less than expiration milliseconds have passed
 // Some among the jobs added may start if they begin before expiration milliseconds have passed while while others die
-int tpoolrr_jobs_addall(Tpoolrr *pool, size_t count, void *((*functions[])(void*)), void *args[], size_t expiration);
+int tpoolrr_jobs_addall(Tpoolrr *pool, size_t count, uint64_t user_tag[], void *((*functions[])(void*)), void *args[], size_t expiration);
 
 // Add job to every single thread
 // Fails with EBUSY if every thread does not have at least one free job space in its queue
 // Does not add any jobs until it is confirmed that all threads have at least one free job space in their queue
-int tpoolrr_jobs_assign(Tpoolrr *pool, void *((*function)(void*)), void *arg, size_t expiration);
+int tpoolrr_jobs_assign(Tpoolrr *pool, uint64_t user_tag, void *((*function)(void*)), void *arg, size_t expiration);
 
-// Get number of jobs the thread pool has in its current backlog
-// This is by its nature an O(N) operation
-size_t tpoolrr_jobs_queued(Tpoolrr *pool);
+// Get one completed job back
+// Returns EBUSY if no submitted jobs
+int tpoolrr_completions_pop(Tpoolrr *pool, struct tpoolrr_job *dest);
 
-// Get number of jobs the thread pool can accept with its current backlog
-// This is by its nature an O(N) operation
-size_t tpoolrr_jobs_empty(Tpoolrr *pool);
+// Get at most at_most completed jobs back
+// Returns EBUSY if not able to meet at_most
+// actual number obtained placed in num_popped
+int tpoolrr_completions_popsome(Tpoolrr *pool, struct tpoolrr_job dest[], size_t at_most, size_t *num_popped);
 
-// Get number of jobs the thread pool can accept assuming no jobs are currently queued
+// Block until getting wait_for completed job back
+int tpoolrr_completions_popall(Tpoolrr *pool, struct tpoolrr_job dest[], size_t wait_for);
+
+// Get number of submitted jobs the thread pool has in its current backlog
 // This is by its nature an O(N) operation
-size_t tpoolrr_jobs_cap(Tpoolrr *pool);
+size_t tpoolrr_submissions_queued(Tpoolrr *pool);
+
+// Get number of submitted jobs the thread pool can accept with its current backlog
+// This is by its nature an O(N) operation
+size_t tpoolrr_submissions_empty(Tpoolrr *pool);
+
+// Get number of submitted jobs the thread pool can accept assuming no jobs are currently queued
+// This is by its nature an O(N) operation
+size_t tpoolrr_submissions_cap(Tpoolrr *pool);
+
+// Get number of completion events resulting from completed jobs for the thread pool
+// This is by its nature an O(N) operation
+size_t tpoolrr_completions_queued(Tpoolrr *pool);
+
+// Get number of completion events that can still be accepted from completed jobs for the thread pool
+// This is by its nature an O(N) operation
+size_t tpoolrr_completions_empty(Tpoolrr *pool);
+
+// Get number of completion events that the thread pool can accept assuming no completion events are queued
+// This is by its nature an O(N) operation
+size_t tpoolrr_completions_cap(Tpoolrr *pool);
 
 // Get number of active threads
 // This is by its nature an O(N) operation

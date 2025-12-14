@@ -33,19 +33,19 @@
 
 # How to use
 ```sh
-# prepare dependencies
-git submodule update --init --recursive
+# prepare required dependencies
+git submodule update --init --recursive SipHash/
 
-# make and run tests (optional)
+# install optional dependencies and run tests (optional)
+# to do this you need to have installed a version of graphviz built with cgraph
 make test
 ./test
 
 # build library
-make
+make all
 ```
 
 # TODO:
-* Remove mutex from pool. In this case, syncronization of resources should be left to user.
-* Consider removing functions attached to pool.
+* Look into why gcc thread sanitizer fails to build when compiling with .S files that use global labels.
 * Standardize public API naming.
 * Standardize returned errors.

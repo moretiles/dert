@@ -318,9 +318,13 @@ uint64_t monotonic_time_now(void) {
     return (seconds * 1000) + milliseconds;
 }
 
-struct tpoolrr_job tpoolrr_job_construct(void *(*function)(void*), void *arg, size_t expiration) {
+struct tpoolrr_job tpoolrr_job_construct(
+    uint64_t user_tag, void *(*function)(void*),
+    void *arg, size_t expiration
+) {
     struct tpoolrr_job return_this;
 
+    return_this.user_tag = user_tag;
     return_this.function = function;
     return_this.arg = arg;
     return_this.expiration = expiration;
@@ -341,7 +345,8 @@ void *tpoolrr_worker(void *void_arg) {
     struct tpoolrr_worker_arg *arg;
     Tpoolrr *pool;
     size_t index;
-    Aqueue *job_queue;
+    Aqueue *submission_queue;
+    Aqueue *completion_queue;
     enum tpoolrr_thread_state *desired_state;
     enum tpoolrr_thread_state *current_state;
     pthread_cond_t *condition;
@@ -357,7 +362,8 @@ void *tpoolrr_worker(void *void_arg) {
 
     pool = arg->pool;
     index = arg->index;
-    job_queue = &(pool->job_queues[index]);
+    submission_queue = &(pool->job_submission_queues[index]);
+    completion_queue = &(pool->job_completion_queues[index]);
     desired_state = &(pool->desired_states[index]);
     current_state = &(pool->current_states[index]);
     condition = &(pool->conditions[index]);
@@ -372,7 +378,7 @@ tpoolrr_worker_loop:
 
             *current_state = TPOOLRR_THREAD_STATE_ACTIVE;
 
-            if(aqueue_len(job_queue) != 0) {
+            if(aqueue_len(submission_queue) != 0) {
                 pthread_mutex_unlock(condition_lock);
             } else {
                 // we want to let other threads run if this thread has no jobs
@@ -397,7 +403,7 @@ tpoolrr_worker_loop:
         } else if(*desired_state == TPOOLRR_THREAD_STATE_JOINED) {
             // return once all work is processed
 
-            if(aqueue_len(job_queue) == 0) {
+            if(aqueue_len(submission_queue) == 0) {
                 *current_state = TPOOLRR_THREAD_STATE_JOINED;
                 pthread_mutex_unlock(condition_lock);
                 return NULL;
@@ -424,22 +430,37 @@ tpoolrr_worker_loop:
         }
 
         // get next job
-        res = aqueue_dequeue(job_queue, &job);
-        printf("%lu: Got job %lu(%lu)\n", index, (size_t) job.function, (size_t) job.arg);
+        res = aqueue_dequeue(submission_queue, &job);
+        printf("Got job %lu:%lu\n", index, (size_t) job.user_tag);
         if(res != 0) {
             printf("Failed to dequeue!\n");
             // maybe log???;
         }
+        job.thread_assigned_to = index;
+        job.flags = 0;
 
         // try to run next job
         if(job.expiration == 0) {
             // no expiration attached
-            job.function(job.arg);
+
+            job.ret = job.function(job.arg);
         } else if(monotonic_time_now() < job.expiration) {
             // before expiration time
-            job.function(job.arg);
+
+            job.ret = job.function(job.arg);
         } else {
             // expired
+
+            job.ret = 0;
+            // TODO: Use actual bitfield to indicate things like this is expired
+            job.flags = (void *) 1;
+        }
+
+        printf("Completed job %lu:%lu\n", index, (size_t) job.user_tag);
+        res = aqueue_enqueue(completion_queue, &job);
+        if(res != 0) {
+            printf("Failed to enqueue!\n");
+            // maybe log???;
         }
     }
 
@@ -473,7 +494,8 @@ size_t tpoolrr_advise(size_t thread_count, size_t jobs_per_thread) {
     return (1 * sizeof(Tpoolrr)) +
            (thread_count * sizeof(pthread_t)) +
            (thread_count * sizeof(struct tpoolrr_worker_arg)) +
-           (1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread)) +
+           (1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread)) + // submissions
+           (1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread)) + // completions
            (thread_count * sizeof(enum tpoolrr_thread_state)) +
            (thread_count * sizeof(enum tpoolrr_thread_state)) +
            (thread_count * sizeof(pthread_cond_t)) +
@@ -497,7 +519,9 @@ int tpoolrr_init(Tpoolrr **dest, void *memory, size_t thread_count, size_t jobs_
     ptr = pointer_literal_addition(ptr, thread_count * sizeof(pthread_t));
     pool->worker_args = ptr;
     ptr = pointer_literal_addition(ptr, thread_count * sizeof(struct tpoolrr_worker_arg));
-    pool->job_queues = ptr;
+    pool->job_submission_queues = ptr;
+    ptr = pointer_literal_addition(ptr, 1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread));
+    pool->job_completion_queues = ptr;
     ptr = pointer_literal_addition(ptr, 1 * aqueue_advisev(thread_count, sizeof(struct tpoolrr_job), jobs_per_thread));
     pool->desired_states = ptr;
     ptr = pointer_literal_addition(ptr, thread_count * sizeof(enum tpoolrr_thread_state));
@@ -507,7 +531,8 @@ int tpoolrr_init(Tpoolrr **dest, void *memory, size_t thread_count, size_t jobs_
     ptr = pointer_literal_addition(ptr, thread_count * sizeof(pthread_cond_t));
     pool->condition_mutexes = ptr;
 
-    aqueue_initv(thread_count, &(pool->job_queues), (void *) pool->job_queues, sizeof(struct tpoolrr_job), jobs_per_thread);
+    aqueue_initv(thread_count, &(pool->job_submission_queues), (void *) pool->job_submission_queues, sizeof(struct tpoolrr_job), jobs_per_thread);
+    aqueue_initv(thread_count, &(pool->job_completion_queues), (void *) pool->job_completion_queues, sizeof(struct tpoolrr_job), jobs_per_thread);
     for(size_t i = 0; i < thread_count; i++) {
         pool->worker_args[i] = tpoolrr_worker_arg_construct(pool, i);
         pool->desired_states[i] = TPOOLRR_THREAD_STATE_ACTIVE;
@@ -548,7 +573,8 @@ void tpoolrr_deinit(Tpoolrr *pool) {
     }
 
     for(size_t i = 0; i < pool->threads_total; i++) {
-        aqueue_deinit(&(pool->job_queues[i]));
+        aqueue_deinit(&(pool->job_submission_queues[i]));
+        aqueue_deinit(&(pool->job_completion_queues[i]));
         pthread_cond_destroy(&(pool->conditions[i]));
         pthread_mutex_destroy(&(pool->condition_mutexes[i]));
     }
@@ -569,7 +595,7 @@ void tpoolrr_destroy(Tpoolrr *pool) {
     return;
 }
 
-int tpoolrr_jobs_add(Tpoolrr *pool, void *(*function)(void*), void *arg, uint64_t expiration) {
+int tpoolrr_jobs_add(Tpoolrr *pool, uint64_t user_tag, void *(*function)(void*), void *arg, uint64_t expiration) {
     uint64_t expiration_as_monotonic_time;
     if(pool == NULL || function == NULL || arg == NULL) {
         return EINVAL;
@@ -581,7 +607,7 @@ int tpoolrr_jobs_add(Tpoolrr *pool, void *(*function)(void*), void *arg, uint64_
         expiration_as_monotonic_time = monotonic_time_now() + expiration;
     }
 
-    struct tpoolrr_job job = tpoolrr_job_construct(function, arg, expiration_as_monotonic_time);
+    struct tpoolrr_job job = tpoolrr_job_construct(user_tag, function, arg, expiration_as_monotonic_time);
     return _tpoolrr_jobs_add(pool, job);
 }
 
@@ -596,15 +622,15 @@ int _tpoolrr_jobs_add(Tpoolrr *pool, struct tpoolrr_job job) {
 
     for(i = 0; i <= pool->threads_total; i++) {
         index = (i + pool->rr_index) % pool->threads_total;
-        len = aqueue_len(&(pool->job_queues[index]));
-        cap = aqueue_cap(&(pool->job_queues[index]));
+        len = aqueue_len(&(pool->job_submission_queues[index]));
+        cap = aqueue_cap(&(pool->job_submission_queues[index]));
         if(len == cap) {
             // cannot push
             continue;
         }
 
         // thread may be waiting, send conditional signal
-        res = aqueue_enqueue(&(pool->job_queues[index]), &job);
+        res = aqueue_enqueue(&(pool->job_submission_queues[index]), &job);
         if(res != 0) {
             goto _tpoolrr_jobs_add_error;
         }
@@ -639,14 +665,17 @@ _tpoolrr_jobs_add_error:
 }
 
 
-int tpoolrr_jobs_addall(Tpoolrr *pool, size_t count,
-                        void *((*functions[])(void*)), void *args[], uint64_t expiration) {
+int tpoolrr_jobs_addall(
+    Tpoolrr *pool, size_t count,
+    uint64_t user_tags[], void *((*functions[])(void*)),
+    void *args[], uint64_t expiration
+) {
     int ret = 0;
     int res;
     uint64_t expiration_as_monotonic_time;
     struct tpoolrr_job job = { 0 };
 
-    if(pool == NULL || functions == NULL || args == NULL || count == 0) {
+    if(pool == NULL || user_tags == NULL || functions == NULL || args == NULL || count == 0) {
         ret = EINVAL;
         goto tpoolrr_jobs_addall_end;
     }
@@ -660,7 +689,7 @@ int tpoolrr_jobs_addall(Tpoolrr *pool, size_t count,
     for(size_t i = 0; i < count; i++) {
         for(size_t j = 0; j < 3; j++) {
             // need to use monotonic api rather than relative time so that all jobs have same end time
-            job = tpoolrr_job_construct(functions[i], args[i], expiration_as_monotonic_time);
+            job = tpoolrr_job_construct(user_tags[i], functions[i], args[i], expiration_as_monotonic_time);
             res = _tpoolrr_jobs_add(pool, job);
 
             // sleeping introduces latency, however, better than spinning up one core to 100% when there is high load
@@ -682,7 +711,7 @@ tpoolrr_jobs_addall_end:
     return ret;
 }
 
-int tpoolrr_jobs_assign(Tpoolrr *pool, void *((*function)(void*)), void *arg, size_t expiration) {
+int tpoolrr_jobs_assign(Tpoolrr *pool, uint64_t user_tag, void *((*function)(void*)), void *arg, size_t expiration) {
     int ret = 0;
     int res = 0;
     uint64_t expiration_as_monotonic_time;
@@ -700,11 +729,11 @@ int tpoolrr_jobs_assign(Tpoolrr *pool, void *((*function)(void*)), void *arg, si
     }
 
     // need to create job here to use so that tpoolrr_jobs_add can be called with jobs that all have the same end time
-    job = tpoolrr_job_construct(function, arg, expiration_as_monotonic_time);
+    job = tpoolrr_job_construct(user_tag, function, arg, expiration_as_monotonic_time);
 
     // Make sure there is space for one additional job on every thread or fail with EBUSY
     for(size_t i = 0; i < pool->threads_total; i++) {
-        if(tpoolrr_jobs_empty(pool) == 0) {
+        if(tpoolrr_submissions_empty(pool) == 0) {
             return EBUSY;
         }
     }
@@ -971,6 +1000,98 @@ size_t tpoolrr_threads_active(Tpoolrr *pool) {
     return total;
 }
 
+int tpoolrr_completions_pop(Tpoolrr *pool, struct tpoolrr_job *dest) {
+    struct tpoolrr_job job;
+    bool done = false;
+    if(pool == NULL || dest == NULL) {
+        return EINVAL;
+    }
+
+    size_t i;
+    for(i = 0; i < pool->threads_total; i++) {
+        size_t index = (i + pool->rr_index) % pool->threads_total;
+        const int aqueue_dequeue_res = aqueue_dequeue(&(pool->job_completion_queues[index]), &job);
+        if(aqueue_dequeue_res == 0) {
+            // found a completed job
+            if(memcpy(dest, &job, sizeof(struct tpoolrr_job)) != dest) {
+                return ENOTRECOVERABLE;
+            }
+            done = true;
+            break;
+        } else if(aqueue_dequeue_res == ENODATA) {
+            // try next queue
+        } else {
+            // something weird
+            return aqueue_dequeue_res;
+        }
+    }
+
+    if(!done) {
+        return EBUSY;
+    } else {
+        pool->rr_index = (pool->rr_index + i) % pool->threads_total;
+        return 0;
+    }
+}
+
+int tpoolrr_completions_popsome(Tpoolrr *pool, struct tpoolrr_job dest[], size_t at_most, size_t *num_popped) {
+    int res = 0;
+    if(pool == NULL || dest == NULL || at_most == 0 || num_popped == NULL) {
+        res = EINVAL;
+        goto tpoolrr_completions_popsome_end;
+    }
+
+    size_t index_into_completion_queues = 0, index_into_dest = 0;
+    while(index_into_completion_queues < at_most) {
+        const int aqueue_dequeue_res = aqueue_dequeue(
+                                           &(pool->job_completion_queues[index_into_completion_queues]),
+                                           &(dest[index_into_dest])
+                                       );
+
+        if(aqueue_dequeue_res == 0) {
+            // pass
+            index_into_completion_queues++;
+            index_into_dest++;
+        } else if(aqueue_dequeue_res == EBUSY) {
+            index_into_completion_queues++;
+        } else {
+            res = aqueue_dequeue_res;
+            goto tpoolrr_completions_popsome_end;
+        }
+    }
+
+tpoolrr_completions_popsome_end:
+    *num_popped = index_into_dest;
+    return res;
+}
+
+int tpoolrr_completions_popall(Tpoolrr *pool, struct tpoolrr_job dest[], size_t wait_for) {
+    int res = 0;
+    if(pool == NULL || dest == NULL || wait_for == 0) {
+        res = EINVAL;
+        goto tpoolrr_completions_popall_end;
+    }
+
+    size_t i = 0;
+    while(i < wait_for) {
+        const int tpoolrr_completions_pop_res = tpoolrr_completions_pop(pool, &(dest[i]));
+
+        if(tpoolrr_completions_pop_res == 0) {
+            // pass
+            i++;
+        } else if(tpoolrr_completions_pop_res == EBUSY) {
+            usleep(1000);
+            continue;
+        } else {
+            res = tpoolrr_completions_pop_res;
+            goto tpoolrr_completions_popall_end;
+        }
+    }
+
+tpoolrr_completions_popall_end:
+    return res;
+}
+
 size_t tpoolrr_threads_inactive(Tpoolrr *pool) {
     int res;
     size_t total = 0;
@@ -1004,7 +1125,7 @@ size_t tpoolrr_threads_total(Tpoolrr *pool) {
     return pool->threads_total;
 }
 
-size_t tpoolrr_jobs_queued(Tpoolrr *pool) {
+size_t tpoolrr_submissions_queued(Tpoolrr *pool) {
     size_t total = 0;
 
     if(pool == NULL) {
@@ -1012,13 +1133,13 @@ size_t tpoolrr_jobs_queued(Tpoolrr *pool) {
     }
 
     for(size_t i = 0; i < pool->threads_total; i++) {
-        total += aqueue_len(&(pool->job_queues[i]));
+        total += aqueue_len(&(pool->job_submission_queues[i]));
     }
 
     return total;
 }
 
-size_t tpoolrr_jobs_empty(Tpoolrr *pool) {
+size_t tpoolrr_submissions_empty(Tpoolrr *pool) {
     size_t total = 0;
 
     if(pool == NULL) {
@@ -1026,13 +1147,13 @@ size_t tpoolrr_jobs_empty(Tpoolrr *pool) {
     }
 
     for(size_t i = 0; i < pool->threads_total; i++) {
-        total += aqueue_cap(&(pool->job_queues[i])) - aqueue_len(&(pool->job_queues[i]));
+        total += aqueue_cap(&(pool->job_submission_queues[i])) - aqueue_len(&(pool->job_submission_queues[i]));
     }
 
     return total;
 }
 
-size_t tpoolrr_jobs_cap(Tpoolrr *pool) {
+size_t tpoolrr_submissions_cap(Tpoolrr *pool) {
     if(pool == NULL) {
         return 0;
     }
