@@ -19,11 +19,16 @@
 #include <fqueue.h>
 #include <fmutex.h>
 #include <fsemaphore.h>
+#include <tree_T.h>
+#include <tree_iterator.h>
 
+#include <errno.h>
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <stddef.h>
 #include <sys/random.h>
 
 int seed;
@@ -101,13 +106,13 @@ int varena_test(void) {
     assert(varena_frame_unused(arena) == 0);
 
     assert(c != NULL);
-    assert(*c = C_CONSTANT);
+    assert((*c = C_CONSTANT));
     assert(d != NULL);
-    assert(*d = D_CONSTANT);
+    assert((*d = D_CONSTANT));
     assert(e != NULL);
-    assert(*e = E_CONSTANT);
+    assert((*e = E_CONSTANT));
     assert(f != NULL);
-    assert(*f = F_CONSTANT);
+    assert((*f = F_CONSTANT));
     assert((void*) c < pointer_literal_addition(arena->bytes, arena->bottom));
     assert((void*) f < pointer_literal_addition(arena->bytes, arena->bottom));
     assert(varena_arena_used(arena) >= FIRST_FRAME_SIZE + SECOND_FRAME_SIZE + THIRD_FRAME_SIZE);
@@ -115,10 +120,10 @@ int varena_test(void) {
     assert(varena_arena_cap(arena) == 999);
     assert(varena_disclaim(&arena) == 0);
 
-    assert(*b = B_CONSTANT);
+    assert((*b = B_CONSTANT));
     assert(varena_disclaim(&arena) == 0);
 
-    assert(*a = A_CONSTANT);
+    assert((*a = A_CONSTANT));
     assert(varena_disclaim(&arena) == 0);
 
     varena_destroy(&arena);
@@ -700,7 +705,25 @@ void *tpoolrr_test_handler3(Tpoolrr *pool, void *varg) {
     return NULL;
 }
 
+int tpoolrr_sort_done_jobs(const void *src1, const void *src2) {
+    if(src1 == NULL || src2 == NULL) {
+        return 0;
+    }
+
+    struct tpoolrr_job *job1 = (struct tpoolrr_job *) src1;
+    struct tpoolrr_job *job2 = (struct tpoolrr_job *) src2;
+
+    if(job1->user_tag < job2->user_tag) {
+        return -1;
+    } else if(job1->user_tag == job2->user_tag) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
 int tpoolrr_test(void) {
+    uint64_t user_tag = 0;
     Tpoolrr *pool;
     printf("Allocating %lu bytes\n", tpoolrr_advise(100, 100));
 
@@ -712,27 +735,27 @@ int tpoolrr_test(void) {
         struct tpoolrr_test_arg1 arg1 = {(int*) &src1, (int*) &dest1};
         struct tpoolrr_test_arg1 arg2 = {(int*) &src2, (int*) &dest2};
         struct tpoolrr_test_arg1 arg3 = {(int*) &src3, (int*) &dest3};
-        assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg1, 0) == 0);
-        assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg2, 0) == 0);
-        assert(tpoolrr_jobs_add(pool, tpoolrr_test_function1, (void *) &arg3, 0) == 0);
+        assert(tpoolrr_jobs_add(pool, user_tag++, tpoolrr_test_function1, (void *) &arg1, 0) == 0);
+        assert(tpoolrr_jobs_add(pool, user_tag++, tpoolrr_test_function1, (void *) &arg2, 0) == 0);
+        assert(tpoolrr_jobs_add(pool, user_tag++, tpoolrr_test_function1, (void *) &arg3, 0) == 0);
 
         // actual amount of active jobs/threads is unpredicatable
         // querying here so thread sanitizer can check for race conditions
         printf("PAUSING\n");
         assert(tpoolrr_pause(pool) == 0);
         printf("PAUSED\n");
-        tpoolrr_jobs_queued(pool);
-        tpoolrr_jobs_empty(pool);
-        tpoolrr_jobs_cap(pool);
+        tpoolrr_submissions_queued(pool);
+        tpoolrr_submissions_empty(pool);
+        tpoolrr_submissions_cap(pool);
         tpoolrr_threads_active(pool);
         tpoolrr_threads_inactive(pool);
         tpoolrr_threads_total(pool);
         printf("RESUMING\n");
         assert(tpoolrr_resume(pool) == 0);
         printf("RESUMED\n");
-        tpoolrr_jobs_queued(pool);
-        tpoolrr_jobs_empty(pool);
-        tpoolrr_jobs_cap(pool);
+        tpoolrr_submissions_queued(pool);
+        tpoolrr_submissions_empty(pool);
+        tpoolrr_submissions_cap(pool);
         tpoolrr_threads_active(pool);
         tpoolrr_threads_inactive(pool);
         tpoolrr_threads_total(pool);
@@ -740,21 +763,26 @@ int tpoolrr_test(void) {
         printf("JOINING\n");
         assert(tpoolrr_join(pool) == 0);
         printf("JOINED\n");
-        printf("%i == %i\n", src1, dest1);
-        printf("queues: %lu, %lu, %lu\n",
-               aqueue_len(&(pool->job_queues[0])),
-               aqueue_len(&(pool->job_queues[1])),
-               aqueue_len(&(pool->job_queues[2])));
+        struct tpoolrr_job done_jobs[3];
+        assert(tpoolrr_completions_popall(pool, done_jobs, 3) == 0);
         assert(src1 == dest1);
         assert(src2 == dest2);
         assert(src3 == dest3);
+        qsort(done_jobs, 3, sizeof(struct tpoolrr_job), tpoolrr_sort_done_jobs);
+        for(size_t i = 0; i < 3; i++) {
+            assert(done_jobs[i].user_tag == i);
+        }
         tpoolrr_destroy(pool);
     }
 
     {
         char src1[999] = "foo", src2[999] = "bar", src3[999] = "baz";
         char dest1[999], dest2[999], dest3[999];
-        Tpoolrr_fn functions[] = {tpoolrr_test_function2, tpoolrr_test_function2, tpoolrr_test_function2};
+        Tpoolrr_fn functions[3] = {tpoolrr_test_function2, tpoolrr_test_function2, tpoolrr_test_function2};
+        uint64_t user_tags[3];
+        user_tags[0] = user_tag++;
+        user_tags[1] = user_tag++;
+        user_tags[2] = user_tag++;
         struct tpoolrr_test_arg2 arg1 = {(char*) src1, (char*) dest1};
         struct tpoolrr_test_arg2 arg2 = {(char*) src2, (char*) dest2};
         struct tpoolrr_test_arg2 arg3 = {(char*) src3, (char*) dest3};
@@ -766,7 +794,7 @@ int tpoolrr_test(void) {
 
         pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION2_THREADS, TPOOLRR_TEST_FUNCTION2_JOBS);
         assert(pool != NULL);
-        assert(tpoolrr_jobs_addall(pool, 3, functions, args, 0) == 0);
+        assert(tpoolrr_jobs_addall(pool, 3, user_tags, functions, args, 0) == 0);
         printf("STOPPING\n");
         assert(tpoolrr_stop_unsafe(pool) == 0);
         printf("STOPPED\n");
@@ -774,15 +802,18 @@ int tpoolrr_test(void) {
         */
 
         pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION2_THREADS, TPOOLRR_TEST_FUNCTION2_JOBS);
-        assert(tpoolrr_jobs_addall(pool, 3, functions, args, 0) == 0);
+        user_tags[0] = user_tag++;
+        user_tags[1] = user_tag++;
+        user_tags[2] = user_tag++;
+        assert(tpoolrr_jobs_addall(pool, 3, user_tags, functions, args, 0) == 0);
         printf("JOINING\n");
         assert(tpoolrr_join(pool) == 0);
         printf("JOINED\n");
         printf("%s == %s\n", src1, dest1);
         printf("queues: %lu, %lu, %lu\n",
-               aqueue_len(&(pool->job_queues[0])),
-               aqueue_len(&(pool->job_queues[1])),
-               aqueue_len(&(pool->job_queues[2])));
+               aqueue_len(&(pool->job_submission_queues[0])),
+               aqueue_len(&(pool->job_submission_queues[1])),
+               aqueue_len(&(pool->job_submission_queues[2])));
         assert(!strcmp(src1, dest1));
         assert(!strcmp(src2, dest2));
         assert(!strcmp(src3, dest3));
@@ -802,7 +833,7 @@ int tpoolrr_test(void) {
         assert(pool != NULL);
         assert(tpoolrr_handler_update(pool, tpoolrr_test_handler3) == 0);
         struct tpoolrr_test_arg3 arg = { pool, &counter, &done_yet, &done_cond };
-        assert(tpoolrr_jobs_assign(pool, tpoolrr_test_worker3, (void *) &arg, 0) == 0);
+        assert(tpoolrr_jobs_assign(pool, user_tag++, tpoolrr_test_worker3, (void *) &arg, 0) == 0);
 
         assert(pthread_cond_wait(&done_cond, &done_yet) == 0);
         assert(pthread_mutex_unlock(&done_yet) == 0);
@@ -1033,6 +1064,251 @@ int fsemaphore_test(void) {
     return 0;
 }
 
+int tree_T_stringify(char *dest, Tree_node *src, size_t cap) {
+    if(dest == NULL || src == NULL || cap == 0) {
+        return EINVAL;
+    }
+
+    int res = snprintf(dest, cap, "%lu:%lu", (size_t) src, (size_t) src->val);
+
+    return res > 0 ? 0 : res;
+}
+
+void tree_puts_debug(Tree_tree *tree, char *string, char *filename) {
+    printf("== %s ==\n", string);
+    puts("= Pre-Order =");
+    assert(tree_puts_pre(tree, tree_T_stringify, filename) == 0);
+    puts("= In-Order =");
+    assert(tree_puts_in(tree, tree_T_stringify, NULL) == 0);
+    puts("= Post-Order =");
+    assert(tree_puts_post(tree, tree_T_stringify, NULL) == 0);
+    puts("= Breadth First Search =");
+    assert(tree_puts_bfs(tree, tree_T_stringify, NULL) == 0);
+    puts("");
+    puts("");
+    puts("");
+}
+
+int tree_T_test(void) {
+    Tree_tree *tree;
+    Tree_tree *tree_backup;
+
+#define TREE_T_TEST_MAX_NODE (99)
+    {
+        tree = tree_create(TREE_T_TEST_MAX_NODE);
+        tree_backup = malloc(tree_advise(TREE_T_TEST_MAX_NODE));
+        assert(tree_backup != NULL);
+
+        // perfectly balanced tree with height of 2
+        // basic insertion
+        {
+            // height = 0
+            assert(tree_insert(tree, 50) == 0);
+
+            // height = 1
+            assert(tree_insert(tree, 30) == 0);
+            assert(tree_insert(tree, 70) == 0);
+
+            // height = 2
+            assert(tree_insert(tree, 20) == 0);
+            assert(tree_insert(tree, 40) == 0);
+            assert(tree_insert(tree, 60) == 0);
+            assert(tree_insert(tree, 80) == 0);
+        }
+
+        // lookup node
+        {
+            Tree_node *root_node, *min_node, *max_node;
+            root_node = tree_lookup(tree, 50);
+            assert(root_node != NULL);
+            assert(root_node->val == 50);
+            min_node = tree_lookup(tree, 20);
+            assert(min_node != NULL);
+            assert(min_node->val == 20);
+            max_node = tree_lookup(tree, 80);
+            assert(max_node != NULL);
+            assert(max_node->val == 80);
+
+            Tree_node *first_range_node, *smallest_range_node, *largest_range_node;
+            first_range_node = tree_lookup_range(tree, 20, 30, TREE_LOOKUP_FIRST);
+            assert(first_range_node != NULL);
+            assert(first_range_node->val == 30);
+            smallest_range_node = tree_lookup_range(tree, 20, 30, TREE_LOOKUP_SMALLEST);
+            assert(smallest_range_node != NULL);
+            assert(smallest_range_node->val == 20);
+            largest_range_node = tree_lookup_range(tree, 20, 30, TREE_LOOKUP_LARGEST);
+            assert(largest_range_node != NULL);
+            assert(largest_range_node->val == 30);
+
+            min_node = tree_node_min(tree, tree->root);
+            assert(min_node != NULL);
+            assert(min_node->val == 20);
+            max_node = tree_node_max(tree, tree->root);
+            assert(max_node != NULL);
+            assert(max_node->val == 80);
+        }
+
+        // iteration
+        {
+            tree_puts_debug(tree, "Perfectly balanced tree", "tests/vtree/graphs/simple/0001_initial.png");
+        }
+
+        // delete
+        {
+            assert(memcpy(tree_backup, tree, tree_advise(TREE_T_TEST_MAX_NODE)) == tree_backup);
+            assert(tree_delete(tree, 50) == 0);
+            assert(tree_delete(tree, 30) == 0);
+            tree_puts_debug(tree, "First set of deletes", "tests/vtree/graphs/simple/0002_firstdelete.png");
+
+
+            assert(memcpy(tree, tree_backup, tree_advise(TREE_T_TEST_MAX_NODE)) == tree);
+            assert(tree_delete(tree, 50) == 0);
+            assert(tree_delete(tree, 70) == 0);
+            assert(tree_delete(tree, 80) == 0);
+            tree_puts_debug(tree, "Second set of deletes", "tests/vtree/graphs/simple/0003_secondelete.png");
+
+
+            assert(memcpy(tree, tree_backup, tree_advise(TREE_T_TEST_MAX_NODE)) == tree);
+            assert(tree_delete(tree, 50) == 0);
+            assert(tree_delete(tree, 30) == 0);
+            assert(tree_delete(tree, 20) == 0);
+            assert(tree_delete(tree, 70) == 0);
+            assert(tree_delete(tree, 80) == 0);
+            assert(tree_delete(tree, 40) == 0);
+            assert(tree_delete(tree, 60) == 0);
+            tree_puts_debug(tree, "Only remaining node is 60", "tests/vtree/graphs/simple/0003_secondelete.png");
+            assert(memcpy(tree, tree_backup, tree_advise(TREE_T_TEST_MAX_NODE)) == tree);
+        }
+
+        // update
+        {
+            assert(memcpy(tree_backup, tree, tree_advise(TREE_T_TEST_MAX_NODE)) == tree_backup);
+            assert(tree_update(tree, 90, 50) == 0);
+            tree_puts_bfs(tree, tree_T_stringify, "tests/vtree/graphs/simple/0004_afterfirstupdate.png");
+            assert(tree_update(tree, 45, 70) == 0);
+            tree_puts_bfs(tree, tree_T_stringify, "tests/vtree/graphs/simple/0005_aftersecondupdate.png");
+            assert(tree_update(tree, 5,  40) == 0);
+            tree_puts_bfs(tree, tree_T_stringify, "tests/vtree/graphs/simple/0006_afterthirdupdate.png");
+            assert(memcpy(tree, tree_backup, tree_advise(TREE_T_TEST_MAX_NODE)) == tree);
+        }
+
+        // many
+        {
+            uint8_t insert_vals[4] = { 15, 30, 45, 60 };
+            uint8_t delete_vals[4] = { 15, 30, 45, 60 };
+            uint8_t update_vals_new[4] = { 30, 40, 50, 60 };
+            uint8_t update_vals_old[4] = { 20, 30, 60, 80 };
+            assert(memcpy(tree_backup, tree, tree_advise(TREE_T_TEST_MAX_NODE)) == tree_backup);
+            tree_puts_bfs(tree, tree_T_stringify, "tests/vtree/graphs/simple/0100_before_many.png");
+            assert(tree_insert_many(tree, insert_vals, 4, sizeof(uint8_t), true) == 0);
+            tree_puts_bfs(tree, tree_T_stringify, "tests/vtree/graphs/simple/0101_after_insert_many.png");
+            assert(tree_delete_many(tree, delete_vals, 4) == 0);
+            tree_puts_bfs(tree, tree_T_stringify, "tests/vtree/graphs/simple/0102_after_delete_many.png");
+            assert(tree_update_many(tree, update_vals_new, update_vals_old, 4, false) == 0);
+            tree_puts_bfs(tree, tree_T_stringify, "tests/vtree/graphs/simple/0103_after_update_many.png");
+            assert(memcpy(tree, tree_backup, tree_advise(TREE_T_TEST_MAX_NODE)) == tree);
+        }
+
+        tree_destroy(tree);
+        free(tree_backup);
+    }
+
+    {
+#define TREE_T_TEST_VALUES_LEN (60)
+        const uint8_t values[TREE_T_TEST_VALUES_LEN] = { 42, 80, 42, 43, 10, 82, 95, 67, 37, 74, 88, 50, 14, 73, 98, 79, 7, 59, 37, 28, 5, 75, 94, 56, 4, 31, 1, 31, 91, 5, 45, 71, 82, 55, 72, 87, 69, 82, 60, 2, 61, 88, 66, 50, 25, 25, 42, 27, 6, 26, 92, 54, 10, 79, 61, 66, 92, 8, 79, 17 };
+        tree = tree_create(TREE_T_TEST_MAX_NODE);
+        tree_backup = malloc(tree_advise(TREE_T_TEST_MAX_NODE));
+        assert(tree_backup != NULL);
+
+        // insertion
+        for(size_t i = 0; i < TREE_T_TEST_VALUES_LEN; i++) {
+            assert(tree_insert(tree, values[i]) == 0);
+        }
+
+        // lookup node
+        {
+            Tree_node *root_node, *min_node, *max_node;
+            root_node = tree_lookup(tree, 42);
+            assert(root_node != NULL);
+            assert(root_node->val == 42);
+            min_node = tree_lookup(tree, 1);
+            assert(min_node != NULL);
+            assert(min_node->val == 1);
+            max_node = tree_lookup(tree, 98);
+            assert(max_node != NULL);
+            assert(max_node->val == 98);
+
+            min_node = tree_node_min(tree, tree->root);
+            assert(min_node != NULL);
+            assert(min_node->val == 1);
+            max_node = tree_node_max(tree, tree->root);
+            assert(max_node != NULL);
+            assert(max_node->val == 98);
+
+            assert(tree_reachable(tree) == true);
+        }
+
+        // iteration
+        {
+            // bfs is working
+            tree_puts_bfs(tree, tree_T_stringify, "tests/vtree/graphs/bigtree/0001_initial.png");
+
+            // preorder gets into infinite loop
+            //tree_puts_pre(tree, tree_T_stringify, NULL);
+
+            // inorder misses 98 (the largest value on the tree)
+            //tree_puts_post(tree, tree_T_stringify, NULL);
+
+            // not sure about postorder
+            //tree_puts_in(tree, tree_T_stringify, NULL);
+        }
+
+        // delete
+        {
+            //assert(memcpy(tree_backup, tree, tree_advise(TREE_T_TEST_MAX_NODE)) == tree_backup);
+            //assert(tree_delete(tree, 50) == 0);
+            //assert(tree_delete(tree, 30) == 0);
+            //tree_puts_debug(tree, "First set of deletes", "tests/vtree/graphs/simple/0002_firstdelete.png");
+
+
+            //assert(memcpy(tree, tree_backup, tree_advise(TREE_T_TEST_MAX_NODE)) == tree);
+            //assert(tree_delete(tree, 56) == 0);
+            //assert(tree_delete(tree, 31) == 0);
+            //assert(tree_delete(tree, 82) == 0);
+            //assert(tree_min(tree) != NULL);
+            //assert(tree_max(tree) != NULL);
+            //assert(tree_reachable(tree) == true);
+            //tree_puts_debug(tree, "Second set of deletes", "tests/vtree/graphs/simple/0003_secondelete.png");
+
+
+            //assert(memcpy(tree, tree_backup, tree_advise(TREE_T_TEST_MAX_NODE)) == tree);
+            //assert(tree_delete(tree, 50) == 0);
+            //assert(tree_delete(tree, 30) == 0);
+            //assert(tree_delete(tree, 20) == 0);
+            //assert(tree_delete(tree, 70) == 0);
+            //assert(tree_delete(tree, 80) == 0);
+            //assert(tree_delete(tree, 40) == 0);
+            //assert(tree_delete(tree, 60) == 0);
+            //tree_puts_debug(tree, "Only remaining node is 60", "tests/vtree/graphs/simple/0003_secondelete.png");
+            //assert(memcpy(tree, tree_backup, tree_advise(TREE_T_TEST_MAX_NODE)) == tree);
+        }
+
+        // update
+        /*
+        {
+            assert(tree_update(tree, 90, 50) == 0);
+            assert(tree_update(tree, 45, 70) == 0);
+            assert(tree_update(tree, 5,  40) == 0);
+        }
+        */
+
+        tree_destroy(tree);
+        free(tree_backup);
+    }
+
+    return 0;
+}
+
 int main(void) {
     seed = time(NULL);
     printf("seed is %i\n", seed);
@@ -1052,6 +1328,7 @@ int main(void) {
     tpoolrr_test();
     fmutex_test();
     fsemaphore_test();
+    tree_T_test();
 
     fqueue_test();
 }

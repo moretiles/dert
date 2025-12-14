@@ -19,13 +19,6 @@
 
 #pragma once
 
-// Represents a single job that should be performed by one of the threads
-struct tpoolrr_job {
-    void *((*function)(void*));
-    void *arg;
-    uint64_t expiration;
-};
-
 // The type used as an argument to tpoolrr_worker
 struct tpoolrr_worker_arg {
     Tpoolrr *pool;
@@ -36,7 +29,10 @@ struct tpoolrr_worker_arg {
 uint64_t monotonic_time_now(void);
 
 // Returns job construct assembled from arguments
-struct tpoolrr_job tpoolrr_job_construct(void *((*start_routine) (void*)), void *arg, size_t expiration);
+struct tpoolrr_job tpoolrr_job_construct(
+        uint64_t user_tag, void *((*start_routine) (void*)),
+        void *arg, size_t expiration
+    );
 
 struct tpoolrr_worker_arg tpoolrr_worker_arg_construct(Tpoolrr *pool, size_t index);
 

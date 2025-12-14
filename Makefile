@@ -1,10 +1,21 @@
-CFLAGS=-Wall -Wextra -Wpedantic --std=c11 -fwrapv -fmax-errors=5
-INCLUDE=-Iheader -ISipHash
-DEBUG=-g3 -ggdb
+CFLAGS=-Wall -Wextra -Wpedantic --std=gnu11 -fwrapv -fmax-errors=5
+
+INCLUDE=-I./header/ -I./SipHash/
+TEST_INCLUDE=
+TEST_INCLUDE=
+
+GRAPHVIZ_LIB=-lcgraph -lgvc
+LIB=-lm -luring
+TEST_LIB=${GRAPHVIZ_LIB}
+
+DEBUG=-g3 -gdwarf-4 -ggdb
 OPTIMIZE=
 
 ANALYZE_GCC=-fanalyzer
 ANALYZE_CLANG=-analyze-headers
+
+# Do not try to apply preprocesser to .S assembly files
+.SUFFIXES: .S .s
 
 #######################################################################
 #                                                                     #
@@ -13,77 +24,43 @@ ANALYZE_CLANG=-analyze-headers
 #######################################################################
 all: libdert.a
 
+# remove objects built by this library
 clean:
 	rm -f test tags *.ast *.pch *.plist obj/*.o externalDefMap.txt gmon.out
 
+# remove objects built by this library and its dependencies
+Clean:
+	# required build files
+	rm -f test tags *.ast *.pch *.plist obj/*.o externalDefMap.txt gmon.out
 
-
-libdert.a: obj/vstack.o obj/vqueue.o obj/vdll.o obj/tbuf.o obj/varena.o obj/vpool.o obj/varray.o obj/vht.o obj/fqueue.o obj/cstring.o obj/aqueue.o obj/mpscqueue.o obj/tpoolrr.o obj/fmutex.o obj/fsemaphore.o obj/pointerarith.o obj/siphash.o
+libdert.a: obj/siphash.o obj/vstack.o obj/vqueue.o obj/vdll.o obj/tbuf.o obj/varena.o obj/vpool.o obj/varray.o obj/vht.o obj/fqueue.o obj/cstring.o obj/aqueue.o obj/mpscqueue.o obj/tpoolrr.o obj/fmutex.o obj/fsemaphore.o obj/tree_T.o obj/tree_iterator.o obj/greent.o obj/greent_asm.o obj/pointerarith.o
 	ar rcs libdert.a obj/*.o
 
+## required dependency recipes
+obj/siphash.o: .gitmodules
+	[[ -d SipHash ]] || (echo 1>&2 "You need to follow the directions in README.MD" && exit 1)
+	${CC} ${OPTIMIZE} ${CFLAGS} SipHash/siphash.c -c -o obj/siphash.o ${INCLUDE} ${LIB}
+
 ## individual recipes
-obj/vstack.o: src/vstack.c header/vstack*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/vstack.c -c -o obj/vstack.o ${INCLUDE}
+obj/greent_asm.o: src/greent_asm.S header/greent*.h
+	${CC} ${OPTIMIZE} ${CFLAGS} src/greent_asm.S -c -o obj/greent_asm.o ${INCLUDE} ${LIB}
 
-obj/vqueue.o: src/vqueue.c header/vqueue*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/vqueue.c -c -o obj/vqueue.o ${INCLUDE}
-
-obj/vdll.o: src/vdll.c header/vdll*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/vdll.c -c -o obj/vdll.o ${INCLUDE}
-
-obj/varray.o: src/varray.c header/varray*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/varray.c -c -o obj/varray.o ${INCLUDE}
-
-obj/tbuf.o: src/tbuf.c header/tbuf*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/tbuf.c -c -o obj/tbuf.o ${INCLUDE}
-
-obj/vht.o: src/vht.c header/vht*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/vht.c -c -o obj/vht.o ${INCLUDE}
-
-obj/varena.o: src/varena.c header/varena*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/varena.c -c -o obj/varena.o ${INCLUDE}
-
-obj/vpool.o: src/vpool.c header/vpool*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/vpool.c -c -o obj/vpool.o ${INCLUDE}
-
-obj/fqueue.o: src/fqueue.c header/fqueue*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/fqueue.c -c -o obj/fqueue.o ${INCLUDE}
-
-obj/aqueue.o: src/aqueue.c header/aqueue*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/aqueue.c -c -o obj/aqueue.o ${INCLUDE}
-
-obj/mpscqueue.o: src/mpscqueue.c header/mpscqueue*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/mpscqueue.c -c -o obj/mpscqueue.o ${INCLUDE}
-
-obj/tpoolrr.o: src/tpoolrr.c header/tpoolrr*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/tpoolrr.c -c -o obj/tpoolrr.o ${INCLUDE}
-
-obj/fmutex.o: src/fmutex.c header/fmutex*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/fmutex.c -c -o obj/fmutex.o ${INCLUDE}
-
-obj/fsemaphore.o: src/fsemaphore.c header/fsemaphore*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/fsemaphore.c -c -o obj/fsemaphore.o ${INCLUDE}
-
-obj/cstring.o: src/cstring.c header/cstring*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/cstring.c -c -o obj/cstring.o ${INCLUDE}
-
-obj/pointerarith.o: src/pointerarith.c header/pointerarith*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} src/pointerarith.c -c -o obj/pointerarith.o ${INCLUDE}
-
-## dependency recipes
-obj/siphash.o: SipHash/siphash.c SipHash/siphash*.h
-	${CC} ${OPTIMIZE} ${CFLAGS} SipHash/siphash.c -c -o obj/siphash.o ${INCLUDE}
+obj/%.o: src/%.c header/%*.h
+	${CC} ${OPTIMIZE} ${CFLAGS} $< -c -o $@ ${INCLUDE} ${LIB}
 
 ## tests and housekeeping
 .PHONY: test test_asan test_tsan
 test: libdert.a
-	${CC} ${CFLAGS} ${DEBUG} src/*.c SipHash/siphash.c -o test ${INCLUDE}
+	${CC} -DDERT_TEST=1 ${CFLAGS} ${DEBUG} src/*.c src/*.S SipHash/siphash.c -o test ${INCLUDE} ${TEST_INCLUDE} ${LIB} ${TEST_LIB}
+	LSAN_OPTIONS=suppressions=sanitize-ignorelist.txt ./test
 
 test_asan: libdert.a
-	${CC} ${CFLAGS} ${DEBUG} src/*.c SipHash/siphash.c -o test ${INCLUDE} -fsanitize=address
+	${CC} -DDERT_TEST=1 ${CFLAGS} ${DEBUG} src/*.c src/*.S SipHash/siphash.c -o test ${INCLUDE} ${TEST_INCLUDE} ${LIB} ${TEST_LIB} -fsanitize=address
+	LSAN_OPTIONS=suppressions=sanitize-ignorelist.txt ./test
 
 test_tsan: libdert.a
-	${CC} ${CFLAGS} ${DEBUG} src/*.c SipHash/siphash.c -o test ${INCLUDE} -fsanitize=thread
+	${CC} -DDERT_TEST=1 ${CFLAGS} ${DEBUG} src/*.S src/*.S SipHash/siphash.c -o test ${INCLUDE} ${TEST_INCLUDE} ${LIB} ${TEST_LIB} -fsanitize=thread
+	LSAN_OPTIONS=suppressions=sanitize-ignorelist.txt ./test
 
 .PHONY: tags
 tags:

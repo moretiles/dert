@@ -127,7 +127,7 @@ int vqueue_dequeue(Vqueue *queue, void *dest) {
 int vqueue_front(Vqueue *queue, void *dest) {
     void *front;
 
-    if(queue == NULL) {
+    if(queue == NULL || dest == NULL) {
         return 1;
     }
 

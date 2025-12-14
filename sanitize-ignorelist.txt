@@ -1,0 +1,3 @@
+# following the documented pattern of gvFreeLayout, agclose, gvFinalize, gvFreeContext does not free some memory allocated by libfontconfig.
+# total amount is very small (< 10 KB).
+leak:libfontconfig.so
