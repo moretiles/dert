@@ -5,12 +5,13 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 Vstack *vstack_create(size_t elem_size, size_t num_elems) {
     Vstack *ret;
     void *memory;
 
-    memory = calloc(1, vstack_advise(elem_size, num_elems));
+    memory = malloc(vstack_advise(elem_size, num_elems));
     if(memory == NULL) {
         return NULL;
     }
@@ -40,6 +41,9 @@ int vstack_init(Vstack **dest, void *memory, size_t elem_size, size_t num_elems)
     }
 
     stack = memory;
+    if(memset(stack, 0, vstack_advise(elem_size, num_elems)) != stack) {
+        return ENOTRECOVERABLE;
+    }
     stack->elems = pointer_literal_addition(stack, 1 * sizeof(Vstack));
     stack->elem_size = elem_size;
     stack->stored = 0;
@@ -49,7 +53,7 @@ int vstack_init(Vstack **dest, void *memory, size_t elem_size, size_t num_elems)
     return 0;
 }
 
-int vstack_initv(size_t num_queues, Vstack *dest[], void *memory, size_t elem_size, size_t num_elems) {
+int vstack_initv(size_t num_stacks, Vstack *dest[], void *memory, size_t elem_size, size_t num_elems) {
     Vstack *stacks;
     void *ptr;
 
@@ -58,8 +62,11 @@ int vstack_initv(size_t num_queues, Vstack *dest[], void *memory, size_t elem_si
     }
 
     stacks = memory;
-    ptr = pointer_literal_addition(stacks, num_queues * sizeof(Vstack));
-    for(size_t i = 0; i < num_queues; i++) {
+    if(memset(stacks, 0, vstack_advisev(num_stacks, elem_size, num_elems)) != stacks) {
+        return ENOTRECOVERABLE;
+    }
+    ptr = pointer_literal_addition(stacks, num_stacks * sizeof(Vstack));
+    for(size_t i = 0; i < num_stacks; i++) {
         stacks[i].elems = ptr;
         stacks[i].elem_size = elem_size;
         stacks[i].stored = 0;

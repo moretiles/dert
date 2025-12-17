@@ -13,15 +13,50 @@
 
 #include <liburing.h>
 
-#define GREENT_COUNT (3)
+size_t greent_advise() {
+    return 1 * (sizeof(Greent));
+}
 
-Vert vert = { 0 };
-Greent *waiting_green_threads;
-Greent *ready_green_threads;
-Greent *running_green_thread;
+size_t greent_advisev(size_t num_threads) {
+    return num_threads * (sizeof(Greent));
+}
 
-Greent_do_submission *submission_queue;
-Greent_do_completion *completion_queue;
+int greent_init(Greent *green_thread, Vert *parent, uint64_t unique_id) {
+    if(green_thread == NULL || parent == NULL) {
+        return EINVAL;
+    }
+
+    if(memset(green_thread, 0, greent_advise()) != 0) {
+        return ENOTRECOVERABLE;
+    }
+    green_thread->parent = parent;
+    green_thread->unique_id = unique_id;
+
+    return 0;
+}
+
+int greent_initv(size_t num_threads, Greent **dest, void *memory, Vert *parent, uint64_t unique_id) {
+    Greent *green_threads;
+    if(num_threads == 0 || dest == NULL || memory == NULL || parent == NULL) {
+        return EINVAL;
+    }
+
+    green_threads = memory;
+    if(memset(green_threads, 0, greent_advisev(num_threads)) != 0) {
+        return ENOTRECOVERABLE;
+    }
+    for(size_t i = 0; i < num_threads; i++) {
+        green_threads[i].parent = parent;
+        green_threads[i].unique_id = unique_id;
+    }
+
+    *dest = green_threads;
+    return 0;
+}
+
+bool greent_initalized(Greent *green_thread) {
+    return (green_thread != NULL) && (green_thread->parent != NULL);
+}
 
 uint64_t greent_do_nop(volatile Greent *green_thread, volatile uint64_t user_data) {
     if(green_thread == NULL) {
@@ -105,11 +140,14 @@ uint64_t greent_do_close(volatile Greent *green_thread, volatile uint64_t user_d
     return greent_yield(green_thread);
 }
 
-void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring) {
+void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size_t *num_submissions) {
     struct io_uring_sqe *sqe;
-    if(green_thread == NULL || ring == NULL) {
+    if(green_thread == NULL || ring == NULL || num_submissions == NULL) {
         return;
     }
+
+    // make sure to zero this out
+    *num_submissions = 0;
 
     // name what is used to contruct request
     int fd;
@@ -134,6 +172,7 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring) {
 
         io_uring_prep_read(sqe, fd, buf, num_bytes, offset_into);
         io_uring_submit(ring);
+        *num_submissions += 1;
         break;
     case GREENT_DO_IOURING_WRITE:
         sqe = io_uring_get_sqe(ring);
@@ -146,6 +185,7 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring) {
 
         io_uring_prep_write(sqe, fd, buf, num_bytes, offset_into);
         io_uring_submit(ring);
+        *num_submissions += 1;
         break;
     case GREENT_DO_IOURING_OPEN:
         sqe = io_uring_get_sqe(ring);
@@ -157,6 +197,7 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring) {
 
         io_uring_prep_open(sqe, filename, flags, mode);
         io_uring_submit(ring);
+        *num_submissions += 1;
         break;
     case GREENT_DO_IOURING_CLOSE:
         sqe = io_uring_get_sqe(ring);
@@ -166,6 +207,7 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring) {
 
         io_uring_prep_close(sqe, fd);
         io_uring_submit(ring);
+        *num_submissions += 1;
         break;
     default:
         assert(false);

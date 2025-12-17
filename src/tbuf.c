@@ -19,7 +19,7 @@ Tbuf *tbuf_create(size_t cap) {
     }
 
     memory_needed = tbuf_advise(cap);
-    memory = calloc(1, memory_needed);
+    memory = malloc(memory_needed);
     if(memory == NULL) {
         return NULL;
     }
@@ -64,6 +64,10 @@ int tbuf_init(Tbuf **dest, void *memory, size_t cap) {
     next_unused_region = pointer_literal_addition(next_unused_region,
                          0);
     twin = (Tbuf *) next_unused_region;
+    if(memset(twin, 0, tbuf_advise(cap)) != twin){
+        return ENOTRECOVERABLE;
+    }
+
     next_unused_region = pointer_literal_addition(next_unused_region,
                          (1 * sizeof(Tbuf)));
     A = (char *) next_unused_region;

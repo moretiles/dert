@@ -30,7 +30,7 @@ uint64_t monotonic_time_now(void);
 
 // Returns job construct assembled from arguments
 struct tpoolrr_job tpoolrr_job_construct(
-        uint64_t user_tag, void *((*start_routine) (void*)),
+        uint64_t user_tag, void *((*start_routine) (Tpoolrr*,void*)),
         void *arg, size_t expiration
     );
 

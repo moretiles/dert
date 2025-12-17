@@ -61,8 +61,10 @@ int fsemaphore_init(Fsemaphore **dest, void *memory, uint64_t val, uint64_t max)
         return EINVAL;
     }
 
-    *dest = memory;
     sem = memory;
+    if(memset(sem, 0, fsemaphore_advise(val, max)) != sem) {
+        return ENOTRECOVERABLE;
+    }
     memory = pointer_literal_addition(memory, sizeof(Fsemaphore));
     if(fmutex_init(&(sem->mutex), memory) != 0) {
         return EINVAL;
@@ -71,6 +73,7 @@ int fsemaphore_init(Fsemaphore **dest, void *memory, uint64_t val, uint64_t max)
     sem->max = max;
     atomic_store_explicit(&(sem->counter), val, memory_order_release);
 
+    *dest = sem;
     return 0;
 }
 
@@ -80,8 +83,10 @@ int fsemaphore_initv(size_t num_sems, Fsemaphore *dest[], void *memory, uint64_t
         return EINVAL;
     }
 
-    *dest = memory;
     sems = memory;
+    if(memset(sems, 0, fsemaphore_advisev(num_sems, val, max)) != sems) {
+        return ENOTRECOVERABLE;
+    }
     for(uint64_t i = 0; i < num_sems; i++) {
         memory = pointer_literal_addition(memory, sizeof(Fsemaphore));
         if(fmutex_init(&(sems[i].mutex), memory) != 0) {
@@ -95,6 +100,7 @@ int fsemaphore_initv(size_t num_sems, Fsemaphore *dest[], void *memory, uint64_t
         memory = pointer_literal_addition(memory, fsemaphore_advise(val, max));
     }
 
+    *dest = sems;
     return 0;
 }
 

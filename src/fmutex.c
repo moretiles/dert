@@ -52,7 +52,9 @@ int fmutex_init(Fmutex **dest, void *memory) {
         return EINVAL;
     }
 
-    memset(memory, 0, sizeof(Fmutex));
+    if(memset(memory, 0, fmutex_advise()) != memory){
+        return ENOTRECOVERABLE;
+    }
     *dest = memory;
     mutex = *dest;
     // nothing should be dependent on mutex->locked at this point
@@ -68,7 +70,9 @@ int fmutex_initv(size_t num_mutexes, Fmutex *dest[], void *memory) {
         return EINVAL;
     }
 
-    memset(memory, 0, num_mutexes * sizeof(Fmutex));
+    if(memset(memory, 0, fmutex_advisev(num_mutexes)) != memory){
+        return ENOTRECOVERABLE;
+    }
     *dest = memory;
     mutexes = *dest;
     for(size_t i = 0; i < num_mutexes; i++) {

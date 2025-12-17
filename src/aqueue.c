@@ -25,7 +25,7 @@ Aqueue *aqueue_create(size_t elem_size, size_t num_elems) {
         return NULL;
     }
 
-    memory = calloc(1, aqueue_advise(elem_size, num_elems));
+    memory = malloc(aqueue_advise(elem_size, num_elems));
     if(memory == NULL) {
         return NULL;
     }
@@ -55,6 +55,9 @@ int aqueue_init(Aqueue **dest, void *memory, size_t elem_size, size_t num_elems)
         return EINVAL;
     }
 
+    if(memset(memory, 0, aqueue_advise(elem_size, num_elems)) != memory) {
+        return ENOTRECOVERABLE;
+    }
     ptr = memory;
     ptr = pointer_literal_addition(ptr, 0);
     queue = (Aqueue *) ptr;
@@ -81,6 +84,10 @@ int aqueue_initv(size_t num_queues, Aqueue *dest[], void *memory, size_t elem_si
 
     *dest = memory;
     queues = memory;
+
+    if(memset(queues, 0, aqueue_advisev(num_queues, elem_size, num_elems)) != queues) {
+        return ENOTRECOVERABLE;
+    }
 
     ptr = pointer_literal_addition(queues, num_queues * sizeof(Aqueue));
     for(size_t i = 0; i < num_queues; i++) {
@@ -157,11 +164,6 @@ int aqueue_front(Aqueue *queue, void *dest) {
 
     if(queue == NULL) {
         return EINVAL;
-    }
-
-    // fails when queue->len == 0
-    if(atomic_load_explicit(&(queue->len), memory_order_acquire) == 0) {
-        return ENODATA;
     }
 
     front = aqueue_front_direct(queue);

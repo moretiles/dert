@@ -15,6 +15,7 @@
 #include <aqueue.h>
 #include <mpscqueue.h>
 #include <tpoolrr.h>
+#include <gtpoolrr.h>
 #include <vht.h>
 #include <fqueue.h>
 #include <fmutex.h>
@@ -625,7 +626,8 @@ struct tpoolrr_test_arg1 {
     int *dest;
 };
 
-void *tpoolrr_test_function1(void *varg) {
+void *tpoolrr_test_function1(Tpoolrr *pool, void *varg) {
+    (void) pool;
     if(varg == NULL) {
         return "bad!";
     }
@@ -647,7 +649,8 @@ struct tpoolrr_test_arg2 {
     char *dest;
 };
 
-void *tpoolrr_test_function2(void *varg) {
+void *tpoolrr_test_function2(Tpoolrr *pool, void *varg) {
+    (void) pool;
     if(varg == NULL) {
         return "bad!";
     }
@@ -665,13 +668,12 @@ void *tpoolrr_test_function2(void *varg) {
 #define TPOOLRR_TEST_FUNCTION3_THREADS (1)
 #define TPOOLRR_TEST_FUNCTION3_JOBS (3)
 struct tpoolrr_test_arg3 {
-    Tpoolrr *pool;
     int *counter;
     pthread_mutex_t *mutex;
     pthread_cond_t *cond;
 };
 
-void *tpoolrr_test_worker3(void *varg) {
+void *tpoolrr_test_worker3(Tpoolrr *pool, void *varg) {
     int counter;
     void *retval;
 
@@ -683,7 +685,7 @@ void *tpoolrr_test_worker3(void *varg) {
 
     counter = __atomic_add_fetch(arg->counter, 1, __ATOMIC_SEQ_CST);
     if(counter == TPOOLRR_TEST_FUNCTION3_THREADS) {
-        tpoolrr_handler_call(arg->pool, arg, &retval);
+        tpoolrr_handler_call(pool, arg, &retval);
     }
 
     return NULL;
@@ -832,7 +834,7 @@ int tpoolrr_test(void) {
         pool = tpoolrr_create(TPOOLRR_TEST_FUNCTION3_THREADS, TPOOLRR_TEST_FUNCTION3_JOBS);
         assert(pool != NULL);
         assert(tpoolrr_handler_update(pool, tpoolrr_test_handler3) == 0);
-        struct tpoolrr_test_arg3 arg = { pool, &counter, &done_yet, &done_cond };
+        struct tpoolrr_test_arg3 arg = { &counter, &done_yet, &done_cond };
         assert(tpoolrr_jobs_assign(pool, user_tag++, tpoolrr_test_worker3, (void *) &arg, 0) == 0);
 
         assert(pthread_cond_wait(&done_cond, &done_yet) == 0);
@@ -843,6 +845,116 @@ int tpoolrr_test(void) {
         printf("counter: %i\n", counter);
         assert(counter == TPOOLRR_TEST_FUNCTION3_THREADS);
         tpoolrr_destroy(pool);
+    }
+
+    return 0;
+}
+
+struct gtpoolrr_test_arg1 {
+    int n;
+};
+
+// Does simple print, yields to parent to do nop, does another print
+void *gtpoolrr_test1(volatile Gtpoolrr *pool, volatile Greent *green_thread, volatile void *varg) {
+    if(pool == NULL || green_thread == NULL || varg == NULL) {
+        return "bad";
+    }
+
+    volatile struct gtpoolrr_test_arg1 *arg = (struct gtpoolrr_test_arg1*) varg;
+
+    printf("function called: %d\n", arg->n);
+    uint64_t ret = greent_do_nop(green_thread, arg->n);
+    printf("yield returned: %d\n", (int) ret);
+
+    return NULL;
+}
+
+struct gtpoolrr_test_arg2 {
+    char *buf;
+    char *filename;
+};
+
+// Cats out the first 63 bytes of a file
+void *gtpoolrr_test2(volatile Gtpoolrr *pool, volatile Greent *green_thread, volatile void *varg) {
+    volatile struct gtpoolrr_test_arg2 *arg;
+    volatile int fd;
+    volatile char *buf;
+    volatile char *filename;
+    if(pool == NULL || green_thread == NULL || varg == NULL) {
+        goto gtpoolrr_test2_end;
+    }
+
+    arg = (volatile struct gtpoolrr_test_arg2*) varg;
+    buf = arg->buf;
+    filename = arg->filename;
+
+    mode_t mode = 0600;
+    greent_do_open(green_thread, green_thread->unique_id, filename, O_RDONLY, &mode);
+    fd = green_thread->completion.res;
+    if(fd <= 0) {
+        printf("Error opening: %s\n", filename);
+        goto gtpoolrr_test2_end;
+    }
+
+    greent_do_read(green_thread, green_thread->unique_id, fd, buf, 256 - 1, 0);
+    const int read_res = green_thread->completion.res;
+    if(read_res < 0) {
+        errno = -read_res;
+        printf("Error reading %s:", filename);
+        perror("");
+    }
+    buf[green_thread->completion.res] = 0;
+
+    printf("%s: %s", filename, buf);
+
+gtpoolrr_test2_end:
+    if(fd > 0) {
+        greent_do_close(green_thread, green_thread->unique_id, fd);
+        if(green_thread->completion.res != 0) {
+            // should never happen
+            assert(false);
+        }
+    }
+    return "";
+}
+
+int gtpoolrr_test(void) {
+    {
+        Gtpoolrr *pool1;
+        pool1 = gtpoolrr_create(1,1);
+        assert(pool1 != NULL);
+        struct gtpoolrr_test_arg1 arg = (struct gtpoolrr_test_arg1) {
+            .n = 55
+        };
+        assert(gtpoolrr_pause(pool1) == 0);
+        assert(gtpoolrr_resume(pool1) == 0);
+        assert(gtpoolrr_jobs_add(pool1, 0, gtpoolrr_test1, &arg, 0) == 0);
+
+        struct gtpoolrr_job jobs[10] = { 0 };
+        assert(gtpoolrr_completions_popall(pool1, jobs, 1) == 0);
+        gtpoolrr_stop_safe(pool1);
+        gtpoolrr_destroy(pool1);
+    }
+
+    {
+        Gtpoolrr *pool2;
+        pool2 = gtpoolrr_create(1,3);
+        assert(pool2 != NULL);
+        char bufs[2][256];
+        char *filenames[2] = { "./tests/DIR.txt", "./obj/dir.txt"};
+        struct gtpoolrr_test_arg2 arg1 = (struct gtpoolrr_test_arg2) {
+            .buf = bufs[0], .filename = filenames[0]
+        };
+        struct gtpoolrr_test_arg2 arg2 = (struct gtpoolrr_test_arg2) {
+            .buf = bufs[1], .filename = filenames[1]
+        };
+        assert(gtpoolrr_jobs_add(pool2, 0, gtpoolrr_test2, &arg1, 0) == 0);
+        assert(gtpoolrr_jobs_add(pool2, 1, gtpoolrr_test2, &arg2, 0) == 0);
+
+        struct gtpoolrr_job jobs[10] = { 0 };
+        assert(gtpoolrr_completions_popall(pool2, jobs, 2) == 0);
+        gtpoolrr_join(pool2);
+        gtpoolrr_destroy(pool2);
     }
 
     return 0;
@@ -1326,9 +1438,11 @@ int main(void) {
     mpscqueue_test_nooverwrite();
     vht_test();
     tpoolrr_test();
+    gtpoolrr_test();
     fmutex_test();
     fsemaphore_test();
     tree_T_test();
-
     fqueue_test();
+
+    //gtpoolrr_test();
 }

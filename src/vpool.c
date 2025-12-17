@@ -34,7 +34,7 @@ Vpool *_vpool_create(size_t num_items, size_t elem_size, Vpool_kind kind, Vpool 
         return NULL;
     }
 
-    Vpool *vpool_created = calloc(1, vpool_advise(num_items, elem_size));
+    Vpool *vpool_created = malloc(vpool_advise(num_items, elem_size));
     if(vpool_created == NULL) {
         return NULL;
     }
@@ -72,6 +72,9 @@ int _vpool_init(Vpool **dest, void *memory, size_t num_items, size_t elem_size, 
     }
 
     pool = memory;
+    if(memset(pool, 0, vpool_advise(num_items, elem_size)) != pool) {
+        return ENOTRECOVERABLE;
+    }
     pool->items = pointer_literal_addition(pool, sizeof(Vpool));
     pool->element_size = elem_size;
     pool->stored = 0;

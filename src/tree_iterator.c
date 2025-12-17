@@ -5,6 +5,7 @@
 #include <tree_iterator_in.h>
 #include <tree_iterator_post.h>
 #include <tree_iterator_bfs.h>
+#include <pointerarith.h>
 
 #include <errno.h>
 #include <stddef.h>
@@ -62,7 +63,7 @@ size_t tree_iterator_advise(Tree_tree *tree, enum tree_iterator_marker marker, s
         break;
     case TREE_ITERATOR_BFS:
         return 1 * ((sizeof(Tree_iterator)) +
-                    (0));
+                    (vqueue_advise(sizeof(struct tree_node*), max_nodes)));
         break;
     default:
         // error
@@ -96,6 +97,9 @@ int tree_iterator_init(
     }
 
     iterator = memory;
+    if(memset(iterator, 0, tree_iterator_advise(tree, marker, max_nodes)) != iterator) {
+        return ENOTRECOVERABLE;
+    }
     iterator->tree = tree;
     iterator->marker = marker;
     iterator->num_visited = 0;
@@ -125,7 +129,10 @@ int tree_iterator_init(
         }
         break;
     case TREE_ITERATOR_BFS:
-        iterator->node_queue = vqueue_create(sizeof(struct tree_node*), max_nodes);
+        iterator->node_queue = pointer_literal_addition(iterator, sizeof(Tree_iterator));
+        if(vqueue_init(iterator->node_queue, sizeof(struct tree_node*), max_nodes) != 0) {
+            return EINVAL;
+        }
         if(vqueue_enqueue(iterator->node_queue, &(tree->root), false) != 0) {
             return EINVAL;
         }
@@ -154,7 +161,7 @@ void tree_iterator_deinit(Tree_iterator *iterator) {
         iterator->next = NULL;
         break;
     case TREE_ITERATOR_BFS:
-        vqueue_destroy(iterator->node_queue);
+        vqueue_deinit(iterator->node_queue);
         break;
     default:
         break;
