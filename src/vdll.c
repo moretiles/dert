@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 Vdll_node *vdll_node_create(size_t elem_size, int (*init)(void *arg)){
 	if(elem_size == 0){
@@ -122,6 +123,9 @@ int vdll_init(Vdll *dll, size_t elem_size, Vdll_functions *functions){
         return 1;
     }
 
+    if(memset(dll, 0, sizeof(Vdll)) != dll){
+        return ENOTRECOVERABLE;
+    }
 	dll->ptr = NULL;
 	dll->elem_size = elem_size;
 	dll->pos = 0;

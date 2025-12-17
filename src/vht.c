@@ -131,7 +131,7 @@ int vht_init(Vht *table, size_t key_size, size_t val_size) {
 }
 
 int _vht_init(Vht *table, size_t key_size, size_t val_size, size_t num_elems) {
-    if(key_size == 0 || val_size == 0) {
+    if(table == NULL || key_size == 0 || val_size == 0) {
         return 1;
     }
 
@@ -143,7 +143,7 @@ int _vht_init(Vht *table, size_t key_size, size_t val_size, size_t num_elems) {
     table->key_size = key_size;
     table->keys = calloc(num_elems, sizeof(struct vht_key_bf) + key_size);
     if(table->keys == NULL) {
-        free(table);
+        free(table->keys);
         return 2;
     }
 
@@ -151,7 +151,7 @@ int _vht_init(Vht *table, size_t key_size, size_t val_size, size_t num_elems) {
     table->vals = calloc(num_elems, val_size);
     if(table->vals == NULL) {
         free(table->keys);
-        free(table);
+        free(table->vals);
         return 3;
     }
 
@@ -305,13 +305,17 @@ int vht_double(Vht *table) {
         return 1;
     }
 
-    random_sequence = malloc(table->key_size);
     if(_vht_init(&new_table, table->key_size, table->val_size, 4 * table->cap) != 0) {
         return 2;
     }
+    random_sequence = malloc(table->key_size);
     if(random_sequence == NULL) {
         free(random_sequence);
         return 3;
+    }
+    if(getrandom(random_sequence, table->key_size, 0) != (ssize_t) table->key_size) {
+        free(random_sequence);
+        return 4;
     }
 
     remaining_positions = vht_cap(table);

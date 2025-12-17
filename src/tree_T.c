@@ -50,6 +50,9 @@ int tree_init(Tree_tree **dest, void *memory, size_t max_nodes) {
     }
 
     tree = memory;
+    if(memset(tree, 0, tree_advise(max_nodes)) != tree) {
+        return ENOTRECOVERABLE;
+    }
 
     tree->root = NULL;
     tree->nodes = pointer_literal_addition(memory, sizeof(Tree_tree));
@@ -273,7 +276,7 @@ tree_insert_many_end:
 
 int tree_node_insert(Tree_tree *tree, uint8_t val, Tree_node *expected_parent) {
     int ret = 0;
-    Tree_node *new_node;
+    Tree_node *new_node = NULL;
     if(tree == NULL) {
         return EINVAL;
     }

@@ -102,13 +102,14 @@ typedef struct green {
     Greent_do_completion completion;
 } Greent;
 
-// User facing
-int greent_spawn(
-    Vert *root,
-    Greent *green_thread,
-    void *((*function)(Greent *buf, void *arg)),
-    void *arg
-);
+// Standard API
+size_t greent_advise();
+size_t greent_advisev(size_t num_threads);
+int greent_init(Greent *green_thread, Vert *parent, uint64_t unique_id);
+int greent_initv(size_t num_threads, Greent **dest, void *memory, Vert *parent, uint64_t unique_id);
+
+// Check whether this green thread has already been initialized
+bool greent_initalized(Greent *green_thread);
 
 // Give cpu time to other green threads while asynchronous operations are performed
 uint64_t greent_do_nop(volatile Greent *green_thread, volatile uint64_t user_data);
@@ -121,15 +122,15 @@ uint64_t greent_do_open(volatile Greent *green_thread, volatile uint64_t user_da
 // Mirrors Linux close system call
 uint64_t greent_do_close(volatile Greent *green_thread, volatile uint64_t user_data, volatile int fd);
 // Used internally for working with green thread asynchronous operations
-void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring);
+void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size_t *num_submissions);
 
 // Internal
 // Needs to be assembly in order to set registers
-__attribute__((__naked__, indirect_return))
+extern __attribute__((__naked__, noinline))
 Greent *greent_root(Vert *root);
 // Needs to be assembly in order to set registers
-__attribute__((__naked__, indirect_return))
+extern __attribute__((__naked__, noinline))
 uint64_t greent_yield(volatile Greent *buf);
 // Needs to be assembly in order to set registers
-__attribute__((__naked__, indirect_return))
+extern __attribute__((__naked__, indirect_return, noinline))
 _Noreturn void greent_resume(volatile Greent *buf, volatile uint64_t retval);

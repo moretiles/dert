@@ -31,8 +31,17 @@ typedef struct vqueue {
 // Allocates memory for and initializes a Vqueue.
 Vqueue *vqueue_create(size_t elem_size, size_t num_elems);
 
+// Advise how much memory is needed for one vqueue with num_elems elements each of elem_size bytes
+size_t vqueue_advise(size_t elem_size, size_t num_elems);
+
+// Advise for many
+size_t vqueue_advisev(size_t num_queues, size_t elem_size, size_t num_elems);
+
 // Initializes a Vqueue.
 int vqueue_init(Vqueue *queue, size_t elem_size, size_t num_elems);
+
+// Initialize for many
+int vqueue_initv(size_t num_queues, Vqueue *dest[], void *memory, size_t elem_size, size_t num_elems);
 
 // Deinitializes a Vqueue>
 void vqueue_deinit(Vqueue *queue);

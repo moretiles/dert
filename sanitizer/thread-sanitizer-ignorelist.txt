@@ -1,0 +1,9 @@
+# When using Graphviz with the dot backend to render tree graphics a race condition is reported that seems to have no negative effect.
+# It involves threads create libglib*.so, libpangoft*.so, and libfontconfig*.so
+race:libfontconfig*.so
+race:libpango*.so
+race:libglib*.so
+
+# Even though the current state is changed when the pthread destructor is called, signalling to the joining/stopping thread that the worker thread is exiting, thread sanitizer is unhappy with this and complains
+# Might be possible to provide some kind of annotation indicating this, however, this is an okay stop gap
+thread:gtpoolrr_create

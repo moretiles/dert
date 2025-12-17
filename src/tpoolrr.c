@@ -319,7 +319,7 @@ uint64_t monotonic_time_now(void) {
 }
 
 struct tpoolrr_job tpoolrr_job_construct(
-    uint64_t user_tag, void *(*function)(void*),
+    uint64_t user_tag, void *(*function)(Tpoolrr*,void*),
     void *arg, size_t expiration
 ) {
     struct tpoolrr_job return_this;
@@ -443,11 +443,11 @@ tpoolrr_worker_loop:
         if(job.expiration == 0) {
             // no expiration attached
 
-            job.ret = job.function(job.arg);
+            job.ret = job.function(pool, job.arg);
         } else if(monotonic_time_now() < job.expiration) {
             // before expiration time
 
-            job.ret = job.function(job.arg);
+            job.ret = job.function(pool, job.arg);
         } else {
             // expired
 
@@ -476,7 +476,7 @@ Tpoolrr *tpoolrr_create(size_t thread_count, size_t jobs_per_thread) {
         return NULL;
     }
 
-    memory = calloc(1, tpoolrr_advise(thread_count, jobs_per_thread));
+    memory = malloc(tpoolrr_advise(thread_count, jobs_per_thread));
     if(memory == NULL) {
         return NULL;
     }
@@ -514,6 +514,10 @@ int tpoolrr_init(Tpoolrr **dest, void *memory, size_t thread_count, size_t jobs_
     ptr = memory;
     ptr = pointer_literal_addition(ptr, 0);
     pool = ptr;
+    if(memset(pool, 0, tpoolrr_advise(thread_count, jobs_per_thread)) != pool) {
+        return ENOTRECOVERABLE;
+    }
+
     ptr = pointer_literal_addition(ptr, 1 * sizeof(Tpoolrr));
     pool->threads = ptr;
     ptr = pointer_literal_addition(ptr, thread_count * sizeof(pthread_t));
@@ -595,7 +599,7 @@ void tpoolrr_destroy(Tpoolrr *pool) {
     return;
 }
 
-int tpoolrr_jobs_add(Tpoolrr *pool, uint64_t user_tag, void *(*function)(void*), void *arg, uint64_t expiration) {
+int tpoolrr_jobs_add(Tpoolrr *pool, uint64_t user_tag, void *(*function)(Tpoolrr*,void*), void *arg, uint64_t expiration) {
     uint64_t expiration_as_monotonic_time;
     if(pool == NULL || function == NULL || arg == NULL) {
         return EINVAL;
@@ -667,7 +671,7 @@ _tpoolrr_jobs_add_error:
 
 int tpoolrr_jobs_addall(
     Tpoolrr *pool, size_t count,
-    uint64_t user_tags[], void *((*functions[])(void*)),
+    uint64_t user_tags[], void *((*functions[])(Tpoolrr*,void*)),
     void *args[], uint64_t expiration
 ) {
     int ret = 0;
@@ -711,7 +715,7 @@ tpoolrr_jobs_addall_end:
     return ret;
 }
 
-int tpoolrr_jobs_assign(Tpoolrr *pool, uint64_t user_tag, void *((*function)(void*)), void *arg, size_t expiration) {
+int tpoolrr_jobs_assign(Tpoolrr *pool, uint64_t user_tag, void *((*function)(Tpoolrr*,void*)), void *arg, size_t expiration) {
     int ret = 0;
     int res = 0;
     uint64_t expiration_as_monotonic_time;
@@ -1035,13 +1039,13 @@ int tpoolrr_completions_pop(Tpoolrr *pool, struct tpoolrr_job *dest) {
 }
 
 int tpoolrr_completions_popsome(Tpoolrr *pool, struct tpoolrr_job dest[], size_t at_most, size_t *num_popped) {
+    size_t index_into_completion_queues = 0, index_into_dest = 0;
     int res = 0;
     if(pool == NULL || dest == NULL || at_most == 0 || num_popped == NULL) {
         res = EINVAL;
         goto tpoolrr_completions_popsome_end;
     }
 
-    size_t index_into_completion_queues = 0, index_into_dest = 0;
     while(index_into_completion_queues < at_most) {
         const int aqueue_dequeue_res = aqueue_dequeue(
                                            &(pool->job_completion_queues[index_into_completion_queues]),

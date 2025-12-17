@@ -39,7 +39,7 @@ size_t vstack_advisev(size_t num_stacks, size_t elem_size, size_t num_elems);
 int vstack_init(Vstack **dest, void *memory, size_t elem_size, size_t num_elems);
 
 // Initialize for many
-int vstack_initv(size_t num_queues, Vstack *dest[], void *memory, size_t elem_size, size_t num_elems);
+int vstack_initv(size_t num_stacks, Vstack *dest[], void *memory, size_t elem_size, size_t num_elems);
 
 // Deinitializes a Vstack.
 int vstack_deinit(Vstack *stack);

@@ -3,11 +3,8 @@
 set -eou pipefail
 
 make test
-./test
 make test_asan
-./test
-#make test_tsan
-#./test
+make test_tsan
 
 # required
 rm -f .b4.lock
