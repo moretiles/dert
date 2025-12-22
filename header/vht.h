@@ -10,6 +10,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct vht {
     // keys placed here.
     void *keys;
@@ -34,6 +38,10 @@ typedef struct vht {
 
     //also need functions
 } Vht;
+
+typedef struct vht_iterator {
+    size_t offset;
+} Vht_iterator;
 
 // Allocates memory for and initializes a Vht.
 Vht *vht_create(size_t key_size, size_t val_size);
@@ -66,5 +74,15 @@ int vht_set(Vht *table, void *key, void *src);
 // Deletes the value associated with key from table.
 int vht_del(Vht *table, void *key);
 
+// Prepare to iterate over elements of a table
+int vht_iterate_start(Vht *table, Vht_iterator *iterator);
+
+// Get next element when iterating over elements of a table
+int vht_iterate_next(Vht *table, Vht_iterator *iterator, void *dest_key, void *dest_val);
+
 // Get number of keys that have associated values in table
 size_t vht_len(Vht *table);
+
+#ifdef __cplusplus
+}
+#endif

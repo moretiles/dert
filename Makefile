@@ -56,7 +56,7 @@ obj/%.o: src/%.c header/%*.h
 ## tests and housekeeping
 .PHONY: test test_asan test_tsan
 test: libdert.a
-	${CC} -DDERT_TEST=1 ${CFLAGS} -O2 src/*.c src/*.S SipHash/siphash.c -o test ${INCLUDE} ${TEST_INCLUDE} ${LIB} ${TEST_LIB}
+	${CC} -DDERT_TEST=1 ${CFLAGS} ${DEBUG} src/*.c src/*.S SipHash/siphash.c -o test ${INCLUDE} ${TEST_INCLUDE} ${LIB} ${TEST_LIB}
 	./test
 
 test_asan: libdert.a

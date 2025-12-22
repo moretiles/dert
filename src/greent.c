@@ -58,29 +58,77 @@ bool greent_initalized(Greent *green_thread) {
     return (green_thread != NULL) && (green_thread->parent != NULL);
 }
 
-uint64_t greent_do_nop(volatile Greent *green_thread, volatile uint64_t user_data) {
+int greent_pack(
+    __u64 *tagged_ptr,
+    Greent *green_thread, bool with_timeout, bool something, bool something_else
+) {
+    __u64 green_thread_u64 = 0;
+    __u64 with_timeout_u64 = 0;
+    __u64 something_u64 = 0;
+    __u64 something_else_u64 = 0;
+    if(tagged_ptr == NULL || green_thread == NULL){
+        return EINVAL;
+    }
+
+    green_thread_u64 = (__u64) green_thread;
+    assert((green_thread_u64 % 8) == 0); // make sure green_thread is aligned
+    if(with_timeout) { with_timeout_u64 = 1 << 2; }
+    if(something) { something_u64 = 1 << 1; }
+    if(something_else) { something_else_u64 = 1 << 0; }
+    *tagged_ptr = green_thread_u64 | with_timeout_u64 | something_u64 | something_else_u64;
+
+    return 0;
+}
+
+int greent_unpack(
+    __u64 tagged_ptr,
+    Greent **green_thread, bool *with_timeout, bool *something, bool *something_else
+) {
+    if(tagged_ptr == 0) {
+        return EINVAL; // tagged_ptr is a NULL pointer
+    }
+
+    const __u64 with_timeout_mask = 1 << 2;
+    const __u64 something_mask = 1 << 1;
+    const __u64 something_else_mask = 1 << 0;
+    const __u64 green_thread_mask = (
+        ((__u64) 0xffffffffffffffffllu) ^ (with_timeout_mask | something_mask | something_else_mask)
+    );
+
+    *green_thread = (Greent *) (tagged_ptr & green_thread_mask);
+    *with_timeout = tagged_ptr & with_timeout_mask;
+    *something = tagged_ptr & something_mask;
+    *something_else = tagged_ptr & something_else_mask;
+
+    return 0;
+}
+
+uint64_t greent_do_nop(volatile Greent *green_thread) {
     if(green_thread == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     green_thread->submission = (Greent_do_submission) {
         0
     };
-    green_thread->submission.user_data = user_data;
+    green_thread->submission.user_data = (__u64) green_thread;
     green_thread->submission.do_this = GREENT_DO_NOP;
 
     return greent_yield(green_thread);
 }
 
-uint64_t greent_do_read(volatile Greent *green_thread, volatile uint64_t user_data, volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset) {
+uint64_t greent_do_read(
+    volatile Greent *green_thread,
+    volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset
+) {
     if(green_thread == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     green_thread->submission = (Greent_do_submission) {
         0
     };
-    green_thread->submission.user_data = user_data;
+    green_thread->submission.user_data = (__u64) green_thread;
     green_thread->submission.do_this = GREENT_DO_IOURING_READ;
     green_thread->submission.arg1 = (uint64_t) fd;
     green_thread->submission.arg2 = (uint64_t) buf;
@@ -90,15 +138,18 @@ uint64_t greent_do_read(volatile Greent *green_thread, volatile uint64_t user_da
     return greent_yield(green_thread);
 }
 
-uint64_t greent_do_write(volatile Greent *green_thread, volatile uint64_t user_data, volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset) {
+uint64_t greent_do_write(
+    volatile Greent *green_thread,
+    volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset
+) {
     if(green_thread == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     green_thread->submission = (Greent_do_submission) {
         0
     };
-    green_thread->submission.user_data = user_data;
+    green_thread->submission.user_data = (__u64) green_thread;
     green_thread->submission.do_this = GREENT_DO_IOURING_WRITE;
     green_thread->submission.arg1 = (uint64_t) fd;
     green_thread->submission.arg2 = (uint64_t) buf;
@@ -108,39 +159,100 @@ uint64_t greent_do_write(volatile Greent *green_thread, volatile uint64_t user_d
     return greent_yield(green_thread);
 }
 
-uint64_t greent_do_open(volatile Greent *green_thread, volatile uint64_t user_data, volatile char *path, volatile int flags, volatile mode_t *mode_ptr) {
-    if(green_thread == NULL || mode_ptr == NULL) {
-        return 1;
+uint64_t greent_do_open(
+    volatile Greent *green_thread,
+    volatile char *path, volatile int flags, volatile mode_t mode
+) {
+    if(green_thread == NULL) {
+        return EINVAL;
     }
 
     green_thread->submission = (Greent_do_submission) {
         0
     };
-    green_thread->submission.user_data = user_data;
+
+    green_thread->submission.mode = mode;
+
+    green_thread->submission.user_data = (__u64) green_thread;
     green_thread->submission.do_this = GREENT_DO_IOURING_OPEN;
     green_thread->submission.arg1 = (uint64_t) path;
     green_thread->submission.arg2 = (uint64_t) flags;
-    green_thread->submission.arg3 = (uint64_t) mode_ptr;
+    green_thread->submission.arg3 = (uint64_t) &(green_thread->submission.mode);
 
     return greent_yield(green_thread);
 }
 
-uint64_t greent_do_close(volatile Greent *green_thread, volatile uint64_t user_data, volatile int fd) {
+uint64_t greent_do_close(volatile Greent *green_thread, volatile int fd) {
     if(green_thread == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     green_thread->submission = (Greent_do_submission) {
         0
     };
-    green_thread->submission.user_data = user_data;
+    green_thread->submission.user_data = (__u64) green_thread;
     green_thread->submission.do_this = GREENT_DO_IOURING_CLOSE;
     green_thread->submission.arg1 = (uint64_t) fd;
 
     return greent_yield(green_thread);
 }
 
-void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size_t *num_submissions) {
+uint64_t greent_do_readt(
+    volatile Greent *green_thread,
+    volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset,
+    __kernel_time64_t tv_sec, long long tv_nsec
+) {
+    if(green_thread == NULL) {
+        return EINVAL;
+    }
+
+    green_thread->submission = (Greent_do_submission) {
+        0
+    };
+
+    green_thread->submission.ts = (struct __kernel_timespec) { 0 };
+    green_thread->submission.ts.tv_sec = tv_sec;
+    green_thread->submission.ts.tv_nsec = tv_nsec;
+
+    green_thread->submission.user_data = (__u64) green_thread;
+    green_thread->submission.do_this = GREENT_DO_IOURING_READT;
+    green_thread->submission.arg1 = (uint64_t) fd;
+    green_thread->submission.arg2 = (uint64_t) buf;
+    green_thread->submission.arg3 = (uint64_t) nbytes;
+    green_thread->submission.arg4 = (uint64_t) offset;
+
+    return greent_yield(green_thread);
+}
+
+uint64_t greent_do_writet(
+    volatile Greent *green_thread,
+    volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset,
+    __kernel_time64_t tv_sec, long long tv_nsec
+) {
+    if(green_thread == NULL) {
+        return EINVAL;
+    }
+
+    green_thread->submission = (Greent_do_submission) {
+        0
+    };
+
+    green_thread->submission.ts = (struct __kernel_timespec) { 0 };
+    green_thread->submission.ts.tv_sec = tv_sec;
+    green_thread->submission.ts.tv_nsec = tv_nsec;
+
+    green_thread->submission.user_data = (__u64) green_thread;
+    green_thread->submission.do_this = GREENT_DO_IOURING_WRITET;
+    green_thread->submission.arg1 = (uint64_t) fd;
+    green_thread->submission.arg2 = (uint64_t) buf;
+    green_thread->submission.arg3 = (uint64_t) nbytes;
+    green_thread->submission.arg4 = (uint64_t) offset;
+
+    return greent_yield(green_thread);
+}
+
+void greent_do_submit(Greent *green_thread, struct io_uring *ring, size_t *num_submissions) {
+    int res;
     struct io_uring_sqe *sqe;
     if(green_thread == NULL || ring == NULL || num_submissions == NULL) {
         return;
@@ -163,7 +275,9 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size
         break;
     case GREENT_DO_IOURING_READ:
         sqe = io_uring_get_sqe(ring);
-        sqe->user_data = green_thread->submission.user_data;
+        res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
+        assert(res == 0);
+        sqe->flags = 0;
 
         fd = (int) green_thread->submission.arg1;
         buf = (void *) green_thread->submission.arg2;
@@ -174,9 +288,42 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size
         io_uring_submit(ring);
         *num_submissions += 1;
         break;
+    case GREENT_DO_IOURING_READT:
+        // read request itself
+        // need to make sure sqe->flags is bitwise ORed with IOSQE_IO_LINK for timeout
+        {
+            sqe = io_uring_get_sqe(ring);
+            res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
+            assert(res == 0);
+            sqe->flags = 0 | IOSQE_IO_LINK;
+
+            fd = (int) green_thread->submission.arg1;
+            buf = (void *) green_thread->submission.arg2;
+            num_bytes = (unsigned) green_thread->submission.arg3;
+            offset_into = (__u64) green_thread->submission.arg4;
+
+            io_uring_prep_read(sqe, fd, buf, num_bytes, offset_into);
+            *num_submissions += 1;
+        }
+
+        // timeout is created here
+        // the cqe associated with it will be ignored but the timeout is able to cancel the first read request
+        {
+            sqe = io_uring_get_sqe(ring);
+            res = greent_pack(&(sqe->user_data), green_thread, true, false, false);
+            assert(res == 0);
+            sqe->flags = 0;
+            io_uring_prep_link_timeout(sqe, &(green_thread->submission.ts), 0);
+            *num_submissions += 1;
+        }
+
+        io_uring_submit(ring);
+        break;
     case GREENT_DO_IOURING_WRITE:
         sqe = io_uring_get_sqe(ring);
-        sqe->user_data = green_thread->submission.user_data;
+        res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
+        assert(res == 0);
+        sqe->flags = 0;
 
         fd = (int) green_thread->submission.arg1;
         buf = (void *) green_thread->submission.arg2;
@@ -184,12 +331,45 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size
         offset_into = (__u64) green_thread->submission.arg4;
 
         io_uring_prep_write(sqe, fd, buf, num_bytes, offset_into);
-        io_uring_submit(ring);
         *num_submissions += 1;
+        io_uring_submit(ring);
+        break;
+    case GREENT_DO_IOURING_WRITET:
+        // write request itself
+        // need to make sure sqe->flags is bitwise ORed with IOSQE_IO_LINK for timeout
+        {
+            sqe = io_uring_get_sqe(ring);
+            res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
+            assert(res == 0);
+            sqe->flags = 0 | IOSQE_IO_LINK;
+
+            fd = (int) green_thread->submission.arg1;
+            buf = (void *) green_thread->submission.arg2;
+            num_bytes = (unsigned) green_thread->submission.arg3;
+            offset_into = (__u64) green_thread->submission.arg4;
+
+            io_uring_prep_write(sqe, fd, buf, num_bytes, offset_into);
+            *num_submissions += 1;
+        }
+
+        // timeout is created here
+        // the cqe associated with it will be ignored but the timeout is able to cancel the first read request
+        {
+            sqe = io_uring_get_sqe(ring);
+            res = greent_pack(&(sqe->user_data), green_thread, true, false, false);
+            assert(res == 0);
+            sqe->flags = 0;
+            io_uring_prep_link_timeout(sqe, &(green_thread->submission.ts), 0);
+            *num_submissions += 1;
+        }
+
+        io_uring_submit(ring);
         break;
     case GREENT_DO_IOURING_OPEN:
         sqe = io_uring_get_sqe(ring);
-        sqe->user_data = green_thread->submission.user_data;
+        res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
+        assert(res == 0);
+        sqe->flags = 0;
 
         filename = (char *) green_thread->submission.arg1;
         flags = (int) green_thread->submission.arg2;
@@ -201,7 +381,9 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size
         break;
     case GREENT_DO_IOURING_CLOSE:
         sqe = io_uring_get_sqe(ring);
-        sqe->user_data = green_thread->submission.user_data;
+        res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
+        assert(res == 0);
+        sqe->flags = 0;
 
         fd = (int) green_thread->submission.arg1;
 
@@ -216,342 +398,3 @@ void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size
 
     return;
 }
-
-/*
-void print_and_yield(volatile Greent *green_thread, volatile int n) {
-    if(green_thread == NULL) {
-        return;
-    }
-
-    printf("function called: %d\n", n);
-    uint64_t ret = greent_do_nop(green_thread, n);
-    printf("yield returned: %d\n", (int) ret);
-}
-
-uint8_t fib_with_yield(volatile Greent *green_thread, volatile uint8_t n) {
-    uint8_t r1;
-    uint8_t r2;
-
-    if(n <= 1) {
-        greent_do_nop(green_thread, n);
-        return n;
-    }
-
-    // both work
-
-    r1 = fib_with_yield(green_thread, n - 1);
-    r2 = fib_with_yield(green_thread, n - 2);
-    return r1 + r2;
-
-    //return fib_with_yield(green_thread, n - 1) + fib_with_yield(green_thread, n - 2);
-}
-
-void cat_and_yield(volatile Greent *green_thread, volatile char *buf, volatile char *filename) {
-    int fd;
-    if(green_thread == NULL || filename == NULL) {
-        goto cat_and_yield_end;
-    }
-
-    //fd = open((char *) filename, O_RDONLY);
-    mode_t mode = 0600;
-    greent_do_open(green_thread, green_thread->unique_id, filename, O_RDONLY, &mode);
-    fd = green_thread->completion.res;
-    if(fd <= 0) {
-        printf("Error opening: %s\n", filename);
-        goto cat_and_yield_end;
-    }
-
-    //int read_res = read(fd, buf, 1024 - 1);
-    //while(read_res > 0){
-        //read_res = read(fd, buf, 1024 - 1);
-    //}
-
-//    if(read_res == 0){
-//        // everything has been read
-//    } else {
-//        perror("Got error when using read:");
-//        errno = 0;
-//        goto cat_and_yield_end;
-//    }
-
-    //greent_yield_nop(green_thread, green_thread->unique_id);
-    greent_do_read(green_thread, green_thread->unique_id, fd, buf, 64 - 1, 0);
-    const int read_res = green_thread->completion.res;
-    if(read_res < 0) {
-        errno = -read_res;
-        printf("Error reading %s:", filename);
-        perror("");
-    }
-    buf[green_thread->completion.res] = 0;
-
-    printf("%s: %s", filename, buf);
-
-cat_and_yield_end:
-    if(fd > 0) {
-        greent_do_close(green_thread, green_thread->unique_id, fd);
-        if(green_thread->completion.res != 0) {
-            // should never happen
-            assert(false);
-        }
-    }
-    return;
-}
-
-void write_and_yield(volatile Greent *green_thread, volatile char *buf, volatile char *filename) {
-    int fd;
-    if(green_thread == NULL || filename == NULL) {
-        goto write_and_yield_end;
-    }
-
-    //fd = open((char *) filename, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    mode_t mode = 0600;
-    greent_do_open(green_thread, green_thread->unique_id, filename, O_WRONLY | O_CREAT | O_TRUNC, &mode);
-    fd = green_thread->completion.res;
-    if(fd <= 0) {
-        printf("Error opening: %s\n", filename);
-        goto write_and_yield_end;
-    }
-
-//    int read_res = read(fd, buf, 1024 - 1);
-//    while(read_res > 0){
-//        read_res = read(fd, buf, 1024 - 1);
-//    }
-//
-//    if(read_res == 0){
-//        // everything has been read
-//    } else {
-//        perror("Got error when using read:");
-//        errno = 0;
-//        goto write_and_yield_end;
-//    }
-
-    //greent_yield_nop(green_thread, green_thread->unique_id);
-    greent_do_write(green_thread, green_thread->unique_id, fd, buf, strnlen((char *) buf, 64), 0);
-    const int write_res = green_thread->completion.res;
-    if(write_res < 0) {
-        errno = -write_res;
-        printf("Error writing %s:", filename);
-        perror("");
-    }
-
-    printf("Wrote %i bytes to: %s\n", write_res, filename);
-
-write_and_yield_end:
-    if(fd > 0) {
-        greent_do_close(green_thread, green_thread->unique_id, fd);
-        if(green_thread->completion.res != 0) {
-            // should never happen
-            assert(false);
-        }
-    }
-    return;
-}
-
-void test_cat_and_yield(void) {
-    volatile Greent greens[GREENT_COUNT];
-    char *filenames[GREENT_COUNT] = { "./test/a", "./test/b", "./test/c" };
-    volatile Greent *ret;
-    volatile int n = 0;
-    volatile int i = 0;
-    struct io_uring ring;
-    struct io_uring_cqe *cqe;
-    char bufs[3][64];
-
-    const int io_uring_queue_init_res = io_uring_queue_init(GREENT_COUNT, &ring, 0);
-    if(io_uring_queue_init_res < 0) {
-        return;
-    }
-
-    memset((void *) greens, 0, GREENT_COUNT * sizeof(Greent));
-    memset(&vert, 0, sizeof(Vert));
-    ret = greent_root(&vert);
-    if(ret != NULL) {
-        //greent_resume(ret, 444);
-        greent_do_submit(ret, &ring);
-        n++;
-    }
-
-    while (n < GREENT_COUNT) {
-        greens[n].parent = &vert;
-        greens[n].unique_id = n;
-        cat_and_yield(&(greens[n]), bufs[n], filenames[n]);
-        n++;
-    }
-
-    while (i++ < 3 * GREENT_COUNT) {
-        //printf("Hello from the main function in C!\n");
-        assert(io_uring_wait_cqe(&ring, &cqe) == 0);
-        greens[cqe->user_data].completion.user_data = cqe->user_data;
-        greens[cqe->user_data].completion.res = cqe->res;
-        greens[cqe->user_data].completion.flags = cqe->flags;
-        io_uring_cq_advance(&ring, 1);
-        greent_resume(&(greens[cqe->user_data]), 0);
-    }
-
-    return;
-}
-
-void test_write_and_yield(void) {
-    volatile Greent greens[GREENT_COUNT];
-    char *filenames[GREENT_COUNT] = { "./test/d", "./test/e", "./test/f" };
-    volatile Greent *ret;
-    volatile int n = 0;
-    volatile int i = 0;
-    struct io_uring ring;
-    struct io_uring_cqe *cqe;
-    char bufs[3][64];
-    strcpy(bufs[0], "This will be written to D!\n");
-    strcpy(bufs[1], "This will be written to E!\n");
-    strcpy(bufs[2], "This will be written to F!\n");
-
-    const int io_uring_queue_init_res = io_uring_queue_init(GREENT_COUNT, &ring, 0);
-    if(io_uring_queue_init_res < 0) {
-        return;
-    }
-
-    memset((void *) greens, 0, GREENT_COUNT * sizeof(Greent));
-    memset(&vert, 0, sizeof(Vert));
-    ret = greent_root(&vert);
-    if(ret != NULL) {
-        //greent_resume(ret, 444);
-        greent_do_submit(ret, &ring);
-        n++;
-    }
-
-    while (n < GREENT_COUNT) {
-        greens[n].parent = &vert;
-        greens[n].unique_id = n;
-        write_and_yield(&(greens[n]), bufs[n], filenames[n]);
-        n++;
-    }
-
-    while (i++ < 3 * GREENT_COUNT) {
-        //printf("Hello from the main function in C!\n");
-        assert(io_uring_wait_cqe(&ring, &cqe) == 0);
-        greens[cqe->user_data].completion.user_data = cqe->user_data;
-        greens[cqe->user_data].completion.res = cqe->res;
-        greens[cqe->user_data].completion.flags = cqe->flags;
-        io_uring_cq_advance(&ring, 1);
-        greent_resume(&(greens[cqe->user_data]), 0);
-    }
-
-    return;
-}
-
-
-void test_print_and_yield(void) {
-    volatile Greent greens[5];
-    volatile Greent *ret;
-    volatile int n = 0;
-    volatile int i = 0;
-
-    memset((void *) greens, 0, 5 * sizeof(Greent));
-    memset(&vert, 0, sizeof(Vert));
-    ret = greent_root(&vert);
-    if(ret != NULL) {
-        //greent_resume(ret, 444);
-        n++;
-    }
-
-    while (n < 5) {
-        greens[n] = (Greent) {
-            .parent = &vert
-        };
-        print_and_yield(&(greens[n]), 111 * (n + 1));
-    }
-
-    while (i < 3 * 5) {
-        //printf("Hello from the main function in C!\n");
-        i++;
-        greent_resume(&(greens[(i - 1) % 5]), i);
-    }
-
-    return;
-}
-
-void test_main(void) {
-    volatile Greent greens[GREENT_COUNT];
-    char *filenames[GREENT_COUNT] = { "./test/a", "./test/b", "./test/c" };
-    volatile Greent *ret;
-    volatile int n = 0;
-    volatile int i = 0;
-    struct io_uring ring;
-    struct io_uring_cqe *cqe;
-    char bufs[3][64];
-
-    const int io_uring_queue_init_res = io_uring_queue_init(GREENT_COUNT, &ring, 0);
-    if(io_uring_queue_init_res < 0) {
-        return;
-    }
-
-    memset((void *) greens, 0, GREENT_COUNT * sizeof(Greent));
-    memset(&vert, 0, sizeof(Vert));
-    ret = greent_root(&vert);
-    if(ret != NULL) {
-        greent_yield_submit(ret, &ring);
-    }
-
-    while(true){
-        unsigned i = 0;
-        io_uring_for_each_cqe(ring, head, cqe) {
-            Greent *ready = move_from_waiting_to_ready(waiting);
-            greens[cqe->user_data].completion.user_data = cqe->user_data;
-            greens[cqe->user_data].completion.res = cqe->res;
-            greens[cqe->user_data].completion.flags = cqe->flags;
-            assert(ready != NULL);
-            i++;
-        }
-        io_uring_cq_advance(ring, i);
-
-        Greent *ready = pop_from_ready();
-        if(not_started_yet(ready)) {
-            greens[n].parent = &vert;
-            greens[n].unique_id = n++;
-            ready->function(ready, ready->arg);
-        } else {
-            greent_resume(ready, 0);
-        }
-
-        usleep(1000);
-    }
-
-    return;
-}
-
-int main(void) {
-    test_print_and_yield();
-    test_cat_and_yield();
-    test_write_and_yield();
-}
-
-//int main(void) {
-//    Greent yielded;
-//
-//    yielded = greent_root(&vert);
-//    if(yielded == NULL){
-//        // jumppoint itself was prepared
-//    } else if(yielded->marker == 0) {
-//        ready_jobs.enqueue(yielded)
-//    } else {
-//        submissions.enqueue(yielded);
-//        waiting_jobs.enqueue(yielded);
-//    }
-//
-//    while(true) {
-//        while !(completions.is_empty()) {
-//            completion = completions.dequeue()
-//            move_thread_from_waiting_to_ready(completion)
-//        }
-//
-//        running_job = ready_jobs.dequeue(yielded)
-//        if(running_job.started()){
-//            greent_resume(running_job)
-//        } else {
-//            running_job.execute()
-//        }
-//
-//        // job finished rather than yielding
-//        complete_job(running_job);
-//    }
-//}
-*/

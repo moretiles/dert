@@ -1,7 +1,6 @@
 // all from header/
 #include <vht.h>
 #include <vht_priv.h>
-#include <shorttype.h>
 #include <pointerarith.h>
 
 // all from SipHash/
@@ -12,22 +11,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <sys/random.h>
 
 // Initialize with dummy value of 0 that will be overwritten
 uint8_t vht_hash_salt[VHT_HASH_SALT_LEN_EXPECTED] = { 0 };
 
-// Set actual value of vht_hash_salt
-void __attribute__((constructor)) vht_hash_salt_set_or_die(void);
-
 // Set salt to random value
 // If this fails we do not want to start
+__attribute__((constructor))
 void vht_hash_salt_set_or_die(void) {
     assert(getrandom(vht_hash_salt, VHT_HASH_SALT_LEN_EXPECTED, 0) == VHT_HASH_SALT_LEN_EXPECTED);
 }
 
-u64 vht_hash_calc(const char *data, size_t len) {
-    u64 hash;
+uint64_t vht_hash_calc(const char *data, size_t len) {
+    uint64_t hash;
 
     _Static_assert(VHT_HASH_SALT_LEN_EXPECTED == 16, "Error: Macro defined constant VHT_HASH_SALT_LEN_EXPECTED is not 16 bytes in length, unable to generate proper key for siphash.");
 
@@ -36,13 +34,13 @@ u64 vht_hash_calc(const char *data, size_t len) {
     return hash;
 }
 
-int vht_hash_start(Vht *table, const char *key, size_t len, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val) {
+int vht_hash_start(Vht *table, const char *key, size_t len, uint32_t *offset, uint32_t *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val) {
     if(table == NULL || key == NULL || offset == NULL || iterate == NULL || table_bf == NULL || table_key == NULL || table_val == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     // offset gets low bits, iterate gets high bits
-    u64 hash = vht_hash_calc(key, len);
+    uint64_t hash = vht_hash_calc(key, len);
     *offset = hash >> 0;
     *iterate = hash >> 32;
 
@@ -53,14 +51,14 @@ int vht_hash_start(Vht *table, const char *key, size_t len, u32 *offset, u32 *it
     *table_key = vht_hash_key(table, *offset);
     *table_val = vht_hash_val(table, *offset);
     if(table_bf == NULL || table_key == NULL || table_val == NULL) {
-        return 2;
+        return ENOTRECOVERABLE;
     }
     return 0;
 }
 
-int vht_hash_next(Vht *table, u32 *offset, u32 *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val) {
+int vht_hash_next(Vht *table, uint32_t *offset, uint32_t *iterate, struct vht_key_bf **table_bf, void **table_key, void **table_val) {
     if(table == NULL || offset == NULL || iterate == NULL || table_bf == NULL || table_key == NULL || table_val == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     *offset += *iterate;
@@ -69,13 +67,13 @@ int vht_hash_next(Vht *table, u32 *offset, u32 *iterate, struct vht_key_bf **tab
     *table_key = vht_hash_key(table, *offset);
     *table_val = vht_hash_val(table, *offset);
     if(table_bf == NULL || table_key == NULL || table_val == NULL) {
-        return 2;
+        return ENOTRECOVERABLE;
     }
 
     return 0;
 }
 
-struct vht_key_bf *vht_hash_bf(Vht *table, u32 offset) {
+struct vht_key_bf *vht_hash_bf(Vht *table, uint32_t offset) {
     struct vht_key_bf *bf;
     if(table == NULL) {
         return NULL;
@@ -85,7 +83,7 @@ struct vht_key_bf *vht_hash_bf(Vht *table, u32 offset) {
     return bf;
 }
 
-void *vht_hash_key(Vht *table, u32 offset) {
+void *vht_hash_key(Vht *table, uint32_t offset) {
     void *key;
     if(table == NULL) {
         return NULL;
@@ -99,7 +97,7 @@ void *vht_hash_key(Vht *table, u32 offset) {
     return key;
 }
 
-void *vht_hash_val(Vht *table, u32 offset) {
+void *vht_hash_val(Vht *table, uint32_t offset) {
     void *val;
     if(table == NULL) {
         return NULL;
@@ -132,7 +130,7 @@ int vht_init(Vht *table, size_t key_size, size_t val_size) {
 
 int _vht_init(Vht *table, size_t key_size, size_t val_size, size_t num_elems) {
     if(table == NULL || key_size == 0 || val_size == 0) {
-        return 1;
+        return EINVAL;
     }
 
     if(num_elems == 0) {
@@ -144,7 +142,7 @@ int _vht_init(Vht *table, size_t key_size, size_t val_size, size_t num_elems) {
     table->keys = calloc(num_elems, sizeof(struct vht_key_bf) + key_size);
     if(table->keys == NULL) {
         free(table->keys);
-        return 2;
+        return ENOMEM;
     }
 
     table->val_size = val_size;
@@ -152,7 +150,7 @@ int _vht_init(Vht *table, size_t key_size, size_t val_size, size_t num_elems) {
     if(table->vals == NULL) {
         free(table->keys);
         free(table->vals);
-        return 3;
+        return ENOMEM;
     }
 
     table->len = 0;
@@ -183,23 +181,23 @@ void vht_destroy(Vht *table) {
 int vht_get(Vht *table, void *key, void *dest) {
     void *src;
     if(table == NULL || key == NULL || dest == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     src = vht_get_direct(table, key);
     if(src == NULL) {
-        return 2;
+        return ENODATA;
     }
 
     if(memcpy(dest, src, table->val_size) != dest) {
-        return 3;
+        return ENOTRECOVERABLE;
     }
     return 0;
 }
 
 void *vht_get_direct(Vht *table, void *key) {
     size_t remaining_guesses;
-    u32 offset, iterate;
+    uint32_t offset, iterate;
     struct vht_key_bf *table_bf;
     void *table_key, *table_val;
     if(table == NULL || key == NULL) {
@@ -226,11 +224,11 @@ void *vht_get_direct(Vht *table, void *key) {
 
 int vht_set(Vht *table, void *key, void *src) {
     size_t remaining_guesses;
-    u32 offset, iterate;
+    uint32_t offset, iterate;
     struct vht_key_bf *table_bf;
     void *table_key, *table_val;
     if(table == NULL || key == NULL || src == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     if((table->len * 4) >= table->cap) {
@@ -239,7 +237,7 @@ int vht_set(Vht *table, void *key, void *src) {
 
     remaining_guesses = table->cap;
     if(vht_hash_start(table, key, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0) {
-        return 2;
+        return ENOTRECOVERABLE;
     }
 
     while(remaining_guesses > 0 && table_bf != NULL && table_key != NULL && table_val != NULL) {
@@ -257,25 +255,25 @@ int vht_set(Vht *table, void *key, void *src) {
 
         remaining_guesses--;
         if(vht_hash_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0) {
-            return 4;
+            return ENOTRECOVERABLE;
         }
     }
 
-    return 5;
+    return EXFULL;
 }
 
 int vht_del(Vht *table, void *key) {
     size_t remaining_guesses;
-    u32 offset, iterate;
+    uint32_t offset, iterate;
     struct vht_key_bf *table_bf;
     void *table_key, *table_val;
     if(table == NULL || key == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     remaining_guesses = table->cap;
     if(vht_hash_start(table, key, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0) {
-        return 2;
+        return ENOTRECOVERABLE;
     }
 
     while(remaining_guesses > 0 && table_bf != NULL && table_bf->occupied && table_key != NULL) {
@@ -288,49 +286,49 @@ int vht_del(Vht *table, void *key) {
         }
         remaining_guesses--;
         if(vht_hash_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0) {
-            return 3;
+            return ENOTRECOVERABLE;
         }
     }
 
-    return 4;
+    return ENODATA;
 }
 
 int vht_double(Vht *table) {
     Vht new_table;
-    u32 offset, iterate;
+    uint32_t offset, iterate;
     struct vht_key_bf *table_bf;
-    void *random_sequence, *table_key, *table_val;
+    void *psuedorandom_sequence, *table_key, *table_val;
     size_t remaining_positions;
     if(table == NULL) {
-        return 1;
+        return EINVAL;
     }
 
     if(_vht_init(&new_table, table->key_size, table->val_size, 4 * table->cap) != 0) {
-        return 2;
+        return ENOMEM;
     }
-    random_sequence = malloc(table->key_size);
-    if(random_sequence == NULL) {
-        free(random_sequence);
-        return 3;
+    psuedorandom_sequence = malloc(table->key_size);
+    if(psuedorandom_sequence == NULL) {
+        free(psuedorandom_sequence);
+        return ENOMEM;
     }
-    if(getrandom(random_sequence, table->key_size, 0) != (ssize_t) table->key_size) {
-        free(random_sequence);
-        return 4;
+    for(size_t i = 0; i < table->key_size; i += VHT_HASH_SALT_LEN_EXPECTED) {
+        memcpy(pointer_literal_addition(psuedorandom_sequence, i), vht_hash_salt, VHT_HASH_SALT_LEN_EXPECTED % (table->key_size - i));
     }
 
     remaining_positions = vht_cap(table);
-    if(vht_hash_start(table, random_sequence, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0) {
-        return 4;
+    if(vht_hash_start(table, psuedorandom_sequence, table->key_size, &offset, &iterate, &table_bf, &table_key, &table_val) != 0) {
+        free(psuedorandom_sequence);
+        return ENOTRECOVERABLE;
     }
-    free(random_sequence);
+    free(psuedorandom_sequence);
     while(remaining_positions-- > 0) {
         if(vht_hash_next(table, &offset, &iterate, &table_bf, &table_key, &table_val) != 0) {
-            return 4;
+            return ENOTRECOVERABLE;
         }
 
         if(table_bf->occupied) {
             if(vht_set(&new_table, table_key, table_val) != 0) {
-                return 5;
+                return ENOTRECOVERABLE;
             }
         } else {
             continue;
@@ -339,9 +337,58 @@ int vht_double(Vht *table) {
 
     vht_deinit(table);
     if(memcpy(table, &new_table, sizeof(Vht)) != table) {
-        return 7;
+        return ENOTRECOVERABLE;
     }
     return 0;
+}
+
+int vht_iterate_start(Vht *table, Vht_iterator *iterator) {
+    if(table == NULL || iterator == NULL){
+        return EINVAL;
+    }
+
+    iterator->offset = 0;
+    return 0;
+}
+
+int vht_iterate_next(Vht *table, Vht_iterator *iterator, void *dest_key, void *dest_val) {
+    struct vht_key_bf *key_bf;
+    void *key, *val;
+    if(table == NULL || iterator == NULL || dest_key == NULL || dest_val == NULL){
+        return EINVAL;
+    }
+
+    while(iterator->offset < table->cap) {
+        key_bf = vht_hash_bf(table, iterator->offset);
+        if(key_bf == NULL){
+            return ENOTRECOVERABLE;
+        } else if (key_bf->occupied) {
+            key = vht_hash_key(table, iterator->offset);
+            if(key == NULL){
+                return ENOTRECOVERABLE;
+            }
+
+            if(memcpy(dest_key, key, table->key_size) != dest_key){
+                return ENOTRECOVERABLE;
+            }
+
+            val = vht_hash_val(table, iterator->offset);
+            if(val == NULL){
+                return ENOTRECOVERABLE;
+            }
+
+            if(memcpy(dest_val, val, table->val_size) != dest_val){
+                return ENOTRECOVERABLE;
+            }
+
+            iterator->offset += 1;
+            return 0;
+        }
+
+        iterator->offset += 1;
+    }
+
+    return ENODATA;
 }
 
 size_t vht_len(Vht *table) {

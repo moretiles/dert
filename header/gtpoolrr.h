@@ -153,6 +153,7 @@ Gtpoolrr *gtpoolrr_create(size_t thread_count, size_t jobs_per_thread);
 size_t gtpoolrr_advise(size_t thread_count, size_t jobs_per_thread);
 
 // Uses pre-allocated memory greater-than-or-equal to what gtpoolrr_advise returns when given same thread and job values
+// Init expects memory to be aligned to a multiple of 8
 int gtpoolrr_init(Gtpoolrr **dest, void *memory, size_t thread_count, size_t jobs_per_thread);
 
 // Deinitializes provided thread pool
@@ -195,17 +196,57 @@ int gtpoolrr_handler_call(Gtpoolrr *pool, Greent *green_thread, void *arg, void 
 // Add one job to the thread_pool
 // When freshness is 0 then it is not enforced that this job should start before some time in the future
 // When freshness is not 0 then this job is allowed to run only if less than expiration milliseconds have passed
-int gtpoolrr_jobs_add(Gtpoolrr *pool, uint64_t user_tag, void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*)), void *arg, size_t expiration);
+int gtpoolrr_jobs_add(
+    Gtpoolrr *pool, uint64_t user_tag,
+    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
+    void *arg, size_t expiration
+);
 
 // Add many jobs to the thread_pool
 // When freshness is not 0 then each job added is allowed to run only if less than expiration milliseconds have passed
 // Some among the jobs added may start if they begin before expiration milliseconds have passed while while others die
-int gtpoolrr_jobs_addall(Gtpoolrr *pool, size_t count, uint64_t user_tag[], void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)), void *args[], size_t expiration);
+int gtpoolrr_jobs_addall(
+    Gtpoolrr *pool, size_t count, size_t *num_completed, uint64_t user_tag[],
+    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
+    void *args[], size_t expiration
+);
 
 // Add job to every single thread
 // Fails with EBUSY if every thread does not have at least one free job space in its queue
 // Does not add any jobs until it is confirmed that all threads have at least one free job space in their queue
-int gtpoolrr_jobs_assign(Gtpoolrr *pool, uint64_t user_tag, void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*)), void *arg, size_t expiration);
+int gtpoolrr_jobs_assign(
+    Gtpoolrr *pool, uint64_t user_tag,
+    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
+    void *arg, size_t expiration
+);
+
+// Assign job directly to a specific worker thread using thread index
+int gtpoolrr_jobs_add_direct(
+    Gtpoolrr *pool, size_t thread_index, uint64_t user_tag,
+    void *(*function)(volatile Gtpoolrr*, volatile Greent *, volatile void*),
+    void *arg, uint64_t expiration
+);
+
+// Assign jobs directly to a specific worker thread using thread index
+int gtpoolrr_jobs_addall_direct(
+    Gtpoolrr *pool, size_t thread_index, size_t count, size_t *num_completed, uint64_t user_tag[],
+    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
+    void *args[], size_t expiration
+);
+
+// Use round robin scheduling to try to distribute jobs across different threads
+int gtpoolrr_jobs_add_rr(
+    Gtpoolrr *pool, uint64_t user_tag,
+    void *(*function)(volatile Gtpoolrr*, volatile Greent *, volatile void*),
+    void *arg, uint64_t expiration
+);
+
+// Use round robin scheduling to try to distribute jobs across different threads
+int gtpoolrr_jobs_addall_rr(
+    Gtpoolrr *pool, size_t count, size_t *num_completed, uint64_t user_tag[],
+    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
+    void *args[], size_t expiration
+);
 
 // Get one completed job back
 // Returns EBUSY if no submitted jobs

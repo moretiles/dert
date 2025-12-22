@@ -863,7 +863,7 @@ void *gtpoolrr_test1(volatile Gtpoolrr *pool, volatile Greent *green_thread, vol
     volatile struct gtpoolrr_test_arg1 *arg = (struct gtpoolrr_test_arg1*) varg;
 
     printf("function called: %d\n", arg->n);
-    uint64_t ret = greent_do_nop(green_thread, arg->n);
+    uint64_t ret = greent_do_nop(green_thread);
     printf("yield returned: %d\n", (int) ret);
 
     return NULL;
@@ -889,14 +889,14 @@ void *gtpoolrr_test2(volatile Gtpoolrr *pool, volatile Greent *green_thread, vol
     filename = arg->filename;
 
     mode_t mode = 0600;
-    greent_do_open(green_thread, green_thread->unique_id, filename, O_RDONLY, &mode);
+    greent_do_open(green_thread, filename, O_RDONLY, mode);
     fd = green_thread->completion.res;
     if(fd <= 0) {
         printf("Error opening: %s\n", filename);
         goto gtpoolrr_test2_end;
     }
 
-    greent_do_read(green_thread, green_thread->unique_id, fd, buf, 256 - 1, 0);
+    greent_do_readt(green_thread, fd, buf, 256 - 1, 0, 1, 0);
     const int read_res = green_thread->completion.res;
     if(read_res < 0) {
         errno = -read_res;
@@ -909,7 +909,78 @@ void *gtpoolrr_test2(volatile Gtpoolrr *pool, volatile Greent *green_thread, vol
 
 gtpoolrr_test2_end:
     if(fd > 0) {
-        greent_do_close(green_thread, green_thread->unique_id, fd);
+        greent_do_close(green_thread, fd);
+        if(green_thread->completion.res != 0) {
+            // should never happen
+            assert(false);
+        }
+    }
+    return "";
+}
+
+struct gtpoolrr_test_arg3 {
+    char *buf;
+    char *in_filename;
+    char *out_filename;
+};
+
+// want to make sure greent_do_readt and greent_do_write work together
+void *gtpoolrr_test3(volatile Gtpoolrr *pool, volatile Greent *green_thread, volatile void *varg) {
+    volatile int in_fd = 0, out_fd = 0;
+    if(pool == NULL || green_thread == NULL || varg == NULL){
+        return NULL;
+    }
+
+    volatile struct gtpoolrr_test_arg3 *arg = (volatile struct gtpoolrr_test_arg3*) varg;
+    volatile char *buf = arg->buf;
+    volatile char *in_filename = arg->in_filename;
+    volatile char *out_filename = arg->out_filename;
+
+    mode_t mode = 0600;
+    greent_do_open(green_thread, in_filename, O_RDONLY, mode);
+    in_fd = green_thread->completion.res;
+    if(in_fd <= 0) {
+        printf("Error opening: %s\n", in_filename);
+        goto gtpoolrr_test3_end;
+    }
+
+    greent_do_open(green_thread, out_filename, O_WRONLY | O_CREAT | O_TRUNC, mode);
+    out_fd = green_thread->completion.res;
+    if(out_fd <= 0) {
+        printf("Error opening: %s\n", out_filename);
+        goto gtpoolrr_test3_end;
+    }
+
+    greent_do_readt(green_thread, in_fd, buf, 256 - 1, 0, 1, 10);
+    const int read_res = green_thread->completion.res;
+    if(read_res < 0) {
+        errno = -read_res;
+        printf("Error reading %s:", in_filename);
+        perror("");
+        goto gtpoolrr_test3_end;
+    }
+    buf[green_thread->completion.res] = 0;
+
+    greent_do_writet(green_thread, out_fd, buf, read_res, 0, 1, 20);
+    const int write_res = green_thread->completion.res;
+    if(write_res < 0) {
+        errno = -read_res;
+        printf("Error writing %s:", out_filename);
+        perror("");
+        goto gtpoolrr_test3_end;
+    }
+
+gtpoolrr_test3_end:
+    if(in_fd > 0) {
+        greent_do_close(green_thread, in_fd);
+        if(green_thread->completion.res != 0) {
+            // should never happen
+            assert(false);
+        }
+    }
+
+    if(out_fd > 0) {
+        greent_do_close(green_thread, out_fd);
         if(green_thread->completion.res != 0) {
             // should never happen
             assert(false);
@@ -957,6 +1028,46 @@ int gtpoolrr_test(void) {
         gtpoolrr_destroy(pool2);
     }
 
+    {
+        Gtpoolrr *pool3;
+        pool3 = gtpoolrr_create(3,3);
+        assert(pool3 != NULL);
+        char bufs[3][256];
+        char *in_filenames[3] = {
+            "tests/gtpoolrr/readtwritet_reference.txt",
+            "tests/gtpoolrr/readtwritet_reference.txt",
+            "tests/gtpoolrr/readtwritet_reference.txt"
+        };
+        char *out_filenames[3] = {
+            "./tests/gtpoolrr/readtwritet_a_out.txt",
+            "./tests/gtpoolrr/readtwritet_b_out.txt",
+            "./tests/gtpoolrr/readtwritet_c_out.txt"
+        };
+        struct gtpoolrr_test_arg3 arg0 = (struct gtpoolrr_test_arg3) {
+            .buf = bufs[0],
+            .in_filename = in_filenames[0],
+            .out_filename = out_filenames[0]
+        };
+        struct gtpoolrr_test_arg3 arg1 = (struct gtpoolrr_test_arg3) {
+            .buf = bufs[1],
+            .in_filename = in_filenames[1],
+            .out_filename = out_filenames[1]
+        };
+        struct gtpoolrr_test_arg3 arg2 = (struct gtpoolrr_test_arg3) {
+            .buf = bufs[2],
+            .in_filename = in_filenames[2],
+            .out_filename = out_filenames[2]
+        };
+        assert(gtpoolrr_jobs_add(pool3, 0, gtpoolrr_test3, &arg0, 0) == 0);
+        assert(gtpoolrr_jobs_add(pool3, 1, gtpoolrr_test3, &arg1, 0) == 0);
+        assert(gtpoolrr_jobs_add(pool3, 2, gtpoolrr_test3, &arg2, 0) == 0);
+
+        struct gtpoolrr_job jobs[10] = { 0 };
+        assert(gtpoolrr_completions_popall(pool3, jobs, 3) == 0);
+        gtpoolrr_join(pool3);
+        gtpoolrr_destroy(pool3);
+    }
+
     return 0;
 }
 
@@ -986,13 +1097,32 @@ int vht_test(void) {
         assert(ptrs[i] == vals[i]);
     }
 
+    int64_t vals_sum = 0;
+    long dest_key = 0;
+    char dest_val = 0;
+    Vht_iterator iterator;
+    int64_t vht_sum = 0;
+    int res;
+
+    for(i = 0; i < TEST_VHT_ARRAY_LEN; i++) {
+        vals_sum += vals[i];
+    }
+
+    assert(vht_iterate_start(table, &iterator) == 0);
+    while((res = vht_iterate_next(table, &iterator, &dest_key, &dest_val)) != ENODATA) {
+        assert(res == 0);
+
+        vht_sum += dest_val;
+    }
+    assert(vals_sum == vht_sum);
+
     vht_destroy(table);
     return 0;
 }
 
 int fqueue_test(void) {
-    Fqueue *in = fqueue_create(999, "tests/fqueue_in.txt", "r");
-    Fqueue *out = fqueue_create(999, "tests/fqueue_out.txt", "w");
+    Fqueue *in = fqueue_create(999, "tests/fqueue/fqueue_in.txt", "r");
+    Fqueue *out = fqueue_create(999, "tests/fqueue/fqueue_out.txt", "w");
     assert(in != NULL);
     assert(out != NULL);
 
