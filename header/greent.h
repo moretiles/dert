@@ -5,12 +5,16 @@
 #include <stdint.h>
 #include <liburing.h>
 
-
 #define GREENT_DO_NOP (0)
 #define GREENT_DO_IOURING_READ (1)
 #define GREENT_DO_IOURING_WRITE (2)
 #define GREENT_DO_IOURING_OPEN (3)
 #define GREENT_DO_IOURING_CLOSE (4)
+#define GREENT_DO_IOURING_TIMEOUT (64)
+#define GREENT_DO_IOURING_READT (65)
+#define GREENT_DO_IOURING_WRITET (66)
+#define GREENT_DO_IOURING_OPENT (67)
+#define GREENT_DO_IOURING_CLOSET (68)
 
 // struct representing a yet to start asynchronous operation (like sleeping, reading, or opening file)
 typedef struct greent_do_submission {
@@ -27,6 +31,12 @@ typedef struct greent_do_submission {
     uint64_t arg6;
     uint64_t arg7;
     uint64_t arg8;
+
+    union {
+        // some submission functions require pointers rather than literals
+        mode_t mode;
+        struct __kernel_timespec ts;
+    };
 } Greent_do_submission;
 
 // Struct representing a completed asynchronous operation (like sleeping, reading, or opening file)
@@ -105,24 +115,59 @@ typedef struct green {
 // Standard API
 size_t greent_advise();
 size_t greent_advisev(size_t num_threads);
+// Both init and initv expect memory to be aligned to a multiple of 8
 int greent_init(Greent *green_thread, Vert *parent, uint64_t unique_id);
 int greent_initv(size_t num_threads, Greent **dest, void *memory, Vert *parent, uint64_t unique_id);
 
 // Check whether this green thread has already been initialized
 bool greent_initalized(Greent *green_thread);
 
+// Tag pointer when attaching to io_uring submission
+int greent_pack(
+    __u64 *tagged_ptr,
+    Greent *green_thread, bool with_timeout, bool something, bool something_else
+);
+// Convert tagged pointer to normal pointer and determine whether status bits are set
+int greent_unpack(
+    __u64 tagged_ptr,
+    Greent **green_thread, bool *with_timeout, bool *something, bool *something_else
+);
+
 // Give cpu time to other green threads while asynchronous operations are performed
-uint64_t greent_do_nop(volatile Greent *green_thread, volatile uint64_t user_data);
+uint64_t greent_do_nop(volatile Greent *green_thread);
 // Mirrors Linux read system call
-uint64_t greent_do_read(volatile Greent *green_thread, volatile uint64_t user_data, volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset);
+uint64_t greent_do_read(
+    volatile Greent *green_thread,
+    volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset
+);
 // Mirrors Linux write system call
-uint64_t greent_do_write(volatile Greent *green_thread, volatile uint64_t user_data, volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset);
+uint64_t greent_do_write(
+    volatile Greent *green_thread,
+    volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset
+);
 // Mirrors Linux open system call
-uint64_t greent_do_open(volatile Greent *green_thread, volatile uint64_t user_data, volatile char *path, volatile int flags, volatile mode_t *mode_ptr);
+uint64_t greent_do_open(
+    volatile Greent *green_thread,
+    volatile char *path, volatile int flags, volatile mode_t mode
+);
 // Mirrors Linux close system call
-uint64_t greent_do_close(volatile Greent *green_thread, volatile uint64_t user_data, volatile int fd);
+uint64_t greent_do_close(volatile Greent *green_thread, volatile int fd);
+
+// Mirrors Linux read system call with added timeout
+uint64_t greent_do_readt(
+    volatile Greent *green_thread,
+    volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset,
+    __kernel_time64_t tv_sec, long long tv_nsec
+);
+// Mirrors Linux write system call with added timeout
+uint64_t greent_do_writet(
+    volatile Greent *green_thread,
+    volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset,
+    __kernel_time64_t tv_sec, long long tv_nsec
+);
+
 // Used internally for working with green thread asynchronous operations
-void greent_do_submit(volatile Greent *green_thread, struct io_uring *ring, size_t *num_submissions);
+void greent_do_submit(Greent *green_thread, struct io_uring *ring, size_t *num_submissions);
 
 // Internal
 // Needs to be assembly in order to set registers

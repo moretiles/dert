@@ -33,8 +33,7 @@ gmon.out
 
 # tests
 test
-
-#graphviz files
+*_out.txt
 *.dot
 *.jpeg
 *.png

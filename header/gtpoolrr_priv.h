@@ -42,4 +42,6 @@ struct gtpoolrr_worker_arg gtpoolrr_worker_arg_construct(Gtpoolrr *pool, size_t 
 // Function spawned on new thread when initalizing/creating the thread pool
 void *gtpoolrr_worker(void *void_arg);
 
-int _gtpoolrr_jobs_add(Gtpoolrr *pool, struct gtpoolrr_job job);
+int _gtpoolrr_jobs_add_rr(Gtpoolrr *pool, struct gtpoolrr_job job);
+
+int _gtpoolrr_jobs_add_direct(Gtpoolrr *pool, size_t thread_index, struct gtpoolrr_job job);
