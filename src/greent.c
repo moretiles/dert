@@ -26,6 +26,7 @@ int greent_init(Greent *green_thread, Vert *parent, uint64_t unique_id) {
         return EINVAL;
     }
 
+    assert((((__u64) green_thread) % 8) == 0); // make sure green_thread is aligned to multiple of 8
     if(memset(green_thread, 0, greent_advise()) != 0) {
         return ENOTRECOVERABLE;
     }
@@ -66,15 +67,21 @@ int greent_pack(
     __u64 with_timeout_u64 = 0;
     __u64 something_u64 = 0;
     __u64 something_else_u64 = 0;
-    if(tagged_ptr == NULL || green_thread == NULL){
+    if(tagged_ptr == NULL || green_thread == NULL) {
         return EINVAL;
     }
 
     green_thread_u64 = (__u64) green_thread;
     assert((green_thread_u64 % 8) == 0); // make sure green_thread is aligned
-    if(with_timeout) { with_timeout_u64 = 1 << 2; }
-    if(something) { something_u64 = 1 << 1; }
-    if(something_else) { something_else_u64 = 1 << 0; }
+    if(with_timeout) {
+        with_timeout_u64 = 1 << 2;
+    }
+    if(something) {
+        something_u64 = 1 << 1;
+    }
+    if(something_else) {
+        something_else_u64 = 1 << 0;
+    }
     *tagged_ptr = green_thread_u64 | with_timeout_u64 | something_u64 | something_else_u64;
 
     return 0;
@@ -92,8 +99,8 @@ int greent_unpack(
     const __u64 something_mask = 1 << 1;
     const __u64 something_else_mask = 1 << 0;
     const __u64 green_thread_mask = (
-        ((__u64) 0xffffffffffffffffllu) ^ (with_timeout_mask | something_mask | something_else_mask)
-    );
+                                        ((__u64) 0xffffffffffffffffllu) ^ (with_timeout_mask | something_mask | something_else_mask)
+                                    );
 
     *green_thread = (Greent *) (tagged_ptr & green_thread_mask);
     *with_timeout = tagged_ptr & with_timeout_mask;
@@ -210,7 +217,9 @@ uint64_t greent_do_readt(
         0
     };
 
-    green_thread->submission.ts = (struct __kernel_timespec) { 0 };
+    green_thread->submission.ts = (struct __kernel_timespec) {
+        0
+    };
     green_thread->submission.ts.tv_sec = tv_sec;
     green_thread->submission.ts.tv_nsec = tv_nsec;
 
@@ -237,7 +246,9 @@ uint64_t greent_do_writet(
         0
     };
 
-    green_thread->submission.ts = (struct __kernel_timespec) { 0 };
+    green_thread->submission.ts = (struct __kernel_timespec) {
+        0
+    };
     green_thread->submission.ts.tv_sec = tv_sec;
     green_thread->submission.ts.tv_nsec = tv_nsec;
 
@@ -291,34 +302,34 @@ void greent_do_submit(Greent *green_thread, struct io_uring *ring, size_t *num_s
     case GREENT_DO_IOURING_READT:
         // read request itself
         // need to make sure sqe->flags is bitwise ORed with IOSQE_IO_LINK for timeout
-        {
-            sqe = io_uring_get_sqe(ring);
-            res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
-            assert(res == 0);
-            sqe->flags = 0 | IOSQE_IO_LINK;
+    {
+        sqe = io_uring_get_sqe(ring);
+        res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
+        assert(res == 0);
+        sqe->flags = 0 | IOSQE_IO_LINK;
 
-            fd = (int) green_thread->submission.arg1;
-            buf = (void *) green_thread->submission.arg2;
-            num_bytes = (unsigned) green_thread->submission.arg3;
-            offset_into = (__u64) green_thread->submission.arg4;
+        fd = (int) green_thread->submission.arg1;
+        buf = (void *) green_thread->submission.arg2;
+        num_bytes = (unsigned) green_thread->submission.arg3;
+        offset_into = (__u64) green_thread->submission.arg4;
 
-            io_uring_prep_read(sqe, fd, buf, num_bytes, offset_into);
-            *num_submissions += 1;
-        }
+        io_uring_prep_read(sqe, fd, buf, num_bytes, offset_into);
+        *num_submissions += 1;
+    }
 
         // timeout is created here
         // the cqe associated with it will be ignored but the timeout is able to cancel the first read request
-        {
-            sqe = io_uring_get_sqe(ring);
-            res = greent_pack(&(sqe->user_data), green_thread, true, false, false);
-            assert(res == 0);
-            sqe->flags = 0;
-            io_uring_prep_link_timeout(sqe, &(green_thread->submission.ts), 0);
-            *num_submissions += 1;
-        }
+    {
+        sqe = io_uring_get_sqe(ring);
+        res = greent_pack(&(sqe->user_data), green_thread, true, false, false);
+        assert(res == 0);
+        sqe->flags = 0;
+        io_uring_prep_link_timeout(sqe, &(green_thread->submission.ts), 0);
+        *num_submissions += 1;
+    }
 
-        io_uring_submit(ring);
-        break;
+    io_uring_submit(ring);
+    break;
     case GREENT_DO_IOURING_WRITE:
         sqe = io_uring_get_sqe(ring);
         res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
@@ -337,34 +348,34 @@ void greent_do_submit(Greent *green_thread, struct io_uring *ring, size_t *num_s
     case GREENT_DO_IOURING_WRITET:
         // write request itself
         // need to make sure sqe->flags is bitwise ORed with IOSQE_IO_LINK for timeout
-        {
-            sqe = io_uring_get_sqe(ring);
-            res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
-            assert(res == 0);
-            sqe->flags = 0 | IOSQE_IO_LINK;
+    {
+        sqe = io_uring_get_sqe(ring);
+        res = greent_pack(&(sqe->user_data), green_thread, false, false, false);
+        assert(res == 0);
+        sqe->flags = 0 | IOSQE_IO_LINK;
 
-            fd = (int) green_thread->submission.arg1;
-            buf = (void *) green_thread->submission.arg2;
-            num_bytes = (unsigned) green_thread->submission.arg3;
-            offset_into = (__u64) green_thread->submission.arg4;
+        fd = (int) green_thread->submission.arg1;
+        buf = (void *) green_thread->submission.arg2;
+        num_bytes = (unsigned) green_thread->submission.arg3;
+        offset_into = (__u64) green_thread->submission.arg4;
 
-            io_uring_prep_write(sqe, fd, buf, num_bytes, offset_into);
-            *num_submissions += 1;
-        }
+        io_uring_prep_write(sqe, fd, buf, num_bytes, offset_into);
+        *num_submissions += 1;
+    }
 
         // timeout is created here
         // the cqe associated with it will be ignored but the timeout is able to cancel the first read request
-        {
-            sqe = io_uring_get_sqe(ring);
-            res = greent_pack(&(sqe->user_data), green_thread, true, false, false);
-            assert(res == 0);
-            sqe->flags = 0;
-            io_uring_prep_link_timeout(sqe, &(green_thread->submission.ts), 0);
-            *num_submissions += 1;
-        }
+    {
+        sqe = io_uring_get_sqe(ring);
+        res = greent_pack(&(sqe->user_data), green_thread, true, false, false);
+        assert(res == 0);
+        sqe->flags = 0;
+        io_uring_prep_link_timeout(sqe, &(green_thread->submission.ts), 0);
+        *num_submissions += 1;
+    }
 
-        io_uring_submit(ring);
-        break;
+    io_uring_submit(ring);
+    break;
     case GREENT_DO_IOURING_OPEN:
         sqe = io_uring_get_sqe(ring);
         res = greent_pack(&(sqe->user_data), green_thread, false, false, false);

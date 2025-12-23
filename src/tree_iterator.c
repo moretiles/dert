@@ -130,7 +130,7 @@ int tree_iterator_init(
         break;
     case TREE_ITERATOR_BFS:
         iterator->node_queue = pointer_literal_addition(iterator, sizeof(Tree_iterator));
-        if(vqueue_init(iterator->node_queue, sizeof(struct tree_node*), max_nodes) != 0) {
+        if(vqueue_init(&(iterator->node_queue), iterator->node_queue, sizeof(struct tree_node*), max_nodes) != 0) {
             return EINVAL;
         }
         if(vqueue_enqueue(iterator->node_queue, &(tree->root), false) != 0) {

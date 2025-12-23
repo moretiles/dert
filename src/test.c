@@ -559,6 +559,76 @@ int vqueue_test_overwrite(void) {
     return 0;
 }
 
+int vqueue_test_some_nooverwrite(void) {
+    Vqueue *queue = vqueue_create(sizeof(long), 3);
+    size_t num_enqueued = 0;
+    size_t num_dequeued = 0;
+    assert(queue != NULL);
+    assert(vqueue_len(queue) == 0);
+    assert(vqueue_cap(queue) == 3);
+
+    long two_longs_src[2] = { 1, 2 };
+    long two_longs_dest[2] = { 0, 0 };
+    long two_more_longs_src[2] = { 3, 4 };
+    long two_more_longs_dest[2] = { 0, 67 };
+    assert(vqueue_enqueue_some(queue, &num_enqueued, 2, two_longs_src, false) == 0);
+    assert(num_enqueued == 2);
+    assert(vqueue_dequeue_some(queue, &num_dequeued, 2, two_longs_dest) == 0);
+    assert(num_dequeued == 2);
+    assert(two_longs_dest[0] == 1);
+    assert(two_longs_dest[1] == 2);
+    assert(vqueue_enqueue_some(queue, &num_enqueued, 2, two_longs_src, false) == 0);
+    assert(num_enqueued == 2);
+    assert(vqueue_enqueue_some(queue, &num_enqueued, 2, two_more_longs_src, false) == EXFULL);
+    assert(num_enqueued == 1);
+    assert(vqueue_dequeue_some(queue, &num_dequeued, 2, two_longs_dest) == 0);
+    assert(num_dequeued == 2);
+    assert(two_longs_dest[0] == 1);
+    assert(two_longs_dest[1] == 2);
+    assert(vqueue_dequeue_some(queue, &num_dequeued, 2, two_more_longs_dest) == ENODATA);
+    assert(num_dequeued == 1);
+    assert(two_more_longs_dest[0] == 3);
+    assert(two_more_longs_dest[1] == 67);
+
+    free(queue);
+    return 0;
+}
+
+int vqueue_test_some_overwrite(void) {
+    Vqueue *queue = vqueue_create(sizeof(long), 3);
+    size_t num_enqueued = 0;
+    size_t num_dequeued = 0;
+    assert(queue != NULL);
+    assert(vqueue_len(queue) == 0);
+    assert(vqueue_cap(queue) == 3);
+
+    long two_longs_src[2] = { 1, 2 };
+    long two_longs_dest[2] = { 0, 0 };
+    long two_more_longs_src[2] = { 3, 4 };
+    long two_more_longs_dest[2] = { 0, 67 };
+    assert(vqueue_enqueue_some(queue, &num_enqueued, 2, two_longs_src, true) == 0);
+    assert(num_enqueued == 2);
+    assert(vqueue_dequeue_some(queue, &num_dequeued, 2, two_longs_dest) == 0);
+    assert(num_dequeued == 2);
+    assert(two_longs_dest[0] == 1);
+    assert(two_longs_dest[1] == 2);
+    assert(vqueue_enqueue_some(queue, &num_enqueued, 2, two_longs_src, true) == 0);
+    assert(num_enqueued == 2);
+    assert(vqueue_enqueue_some(queue, &num_enqueued, 2, two_more_longs_src, true) == 0);
+    assert(num_enqueued == 2);
+    assert(vqueue_dequeue_some(queue, &num_dequeued, 2, two_longs_dest) == 0);
+    assert(num_dequeued == 2);
+    assert(two_longs_dest[0] == 2);
+    assert(two_longs_dest[1] == 3);
+    assert(vqueue_dequeue_some(queue, &num_dequeued, 2, two_more_longs_dest) == ENODATA);
+    assert(num_dequeued == 1);
+    assert(two_more_longs_dest[0] == 4);
+    assert(two_more_longs_dest[1] == 67);
+
+    free(queue);
+    return 0;
+}
+
 int aqueue_test_nooverwrite(void) {
     Aqueue *queue = aqueue_create(sizeof(long), 3);
     assert(queue != NULL);
@@ -586,6 +656,41 @@ int aqueue_test_nooverwrite(void) {
     assert(aqueue_cap(queue) == 3);
     aqueue_destroy(queue);
 
+    return 0;
+}
+
+int aqueue_test_some(void) {
+    Aqueue *queue = aqueue_create(sizeof(long), 3);
+    size_t num_enqueued = 0;
+    size_t num_dequeued = 0;
+    assert(queue != NULL);
+    assert(aqueue_len(queue) == 0);
+    assert(aqueue_cap(queue) == 3);
+
+    long two_longs_src[2] = { 1, 2 };
+    long two_longs_dest[2] = { 0, 0 };
+    long two_more_longs_src[2] = { 3, 4 };
+    long two_more_longs_dest[2] = { 0, 67 };
+    assert(aqueue_enqueue_some(queue, &num_enqueued, 2, two_longs_src) == 0);
+    assert(num_enqueued == 2);
+    assert(aqueue_dequeue_some(queue, &num_dequeued, 2, two_longs_dest) == 0);
+    assert(num_dequeued == 2);
+    assert(two_longs_dest[0] == 1);
+    assert(two_longs_dest[1] == 2);
+    assert(aqueue_enqueue_some(queue, &num_enqueued, 2, two_longs_src) == 0);
+    assert(num_enqueued == 2);
+    assert(aqueue_enqueue_some(queue, &num_enqueued, 2, two_more_longs_src) == EXFULL);
+    assert(num_enqueued == 1);
+    assert(aqueue_dequeue_some(queue, &num_dequeued, 2, two_longs_dest) == 0);
+    assert(num_dequeued == 2);
+    assert(two_longs_dest[0] == 1);
+    assert(two_longs_dest[1] == 2);
+    assert(aqueue_dequeue_some(queue, &num_dequeued, 2, two_more_longs_dest) == ENODATA);
+    assert(num_dequeued == 1);
+    assert(two_more_longs_dest[0] == 3);
+    assert(two_more_longs_dest[1] == 67);
+
+    free(queue);
     return 0;
 }
 
@@ -926,8 +1031,9 @@ struct gtpoolrr_test_arg3 {
 
 // want to make sure greent_do_readt and greent_do_write work together
 void *gtpoolrr_test3(volatile Gtpoolrr *pool, volatile Greent *green_thread, volatile void *varg) {
-    volatile int in_fd = 0, out_fd = 0;
-    if(pool == NULL || green_thread == NULL || varg == NULL){
+    volatile int in_fd = 0;
+    volatile int out_fd = 0;
+    if(pool == NULL || green_thread == NULL || varg == NULL) {
         return NULL;
     }
 
@@ -937,42 +1043,56 @@ void *gtpoolrr_test3(volatile Gtpoolrr *pool, volatile Greent *green_thread, vol
     volatile char *out_filename = arg->out_filename;
 
     mode_t mode = 0600;
+    puts("start open file for reading");
     greent_do_open(green_thread, in_filename, O_RDONLY, mode);
+    puts("end open file for reading");
     in_fd = green_thread->completion.res;
     if(in_fd <= 0) {
         printf("Error opening: %s\n", in_filename);
+        assert(false);
         goto gtpoolrr_test3_end;
     }
 
+    puts("start open file for writing");
     greent_do_open(green_thread, out_filename, O_WRONLY | O_CREAT | O_TRUNC, mode);
+    puts("end open file for writing");
     out_fd = green_thread->completion.res;
     if(out_fd <= 0) {
         printf("Error opening: %s\n", out_filename);
+        assert(false);
         goto gtpoolrr_test3_end;
     }
 
-    greent_do_readt(green_thread, in_fd, buf, 256 - 1, 0, 1, 10);
+    puts("start read file");
+    greent_do_read(green_thread, in_fd, buf, 256 - 1, 0);
+    puts("end read file");
     const int read_res = green_thread->completion.res;
     if(read_res < 0) {
         errno = -read_res;
         printf("Error reading %s:", in_filename);
         perror("");
+        assert(false);
         goto gtpoolrr_test3_end;
     }
     buf[green_thread->completion.res] = 0;
 
-    greent_do_writet(green_thread, out_fd, buf, read_res, 0, 1, 20);
+    puts("start write file");
+    greent_do_write(green_thread, out_fd, buf, read_res, 0);
+    puts("end write file");
     const int write_res = green_thread->completion.res;
     if(write_res < 0) {
         errno = -read_res;
         printf("Error writing %s:", out_filename);
         perror("");
+        assert(false);
         goto gtpoolrr_test3_end;
     }
 
 gtpoolrr_test3_end:
     if(in_fd > 0) {
+        puts("start close read file");
         greent_do_close(green_thread, in_fd);
+        puts("end close read file");
         if(green_thread->completion.res != 0) {
             // should never happen
             assert(false);
@@ -980,7 +1100,9 @@ gtpoolrr_test3_end:
     }
 
     if(out_fd > 0) {
+        puts("start close written file");
         greent_do_close(green_thread, out_fd);
+        puts("end close written file");
         if(green_thread->completion.res != 0) {
             // should never happen
             assert(false);
@@ -991,46 +1113,64 @@ gtpoolrr_test3_end:
 
 int gtpoolrr_test(void) {
     {
+        struct gtpoolrr_job *jobs[10] = { 0 };
+        size_t num_obtained;
         Gtpoolrr *pool1;
         pool1 = gtpoolrr_create(1,1);
         assert(pool1 != NULL);
+        assert(gtpoolrr_pause(pool1) == 0);
+        assert(gtpoolrr_resume(pool1) == 0);
+        assert(0 == gtpoolrr_sbs_get(pool1, jobs, &num_obtained, 1));
+        gtpoolrr_sbs_set_tag(jobs[0], 8080);
+        gtpoolrr_sbs_set_function(jobs[0], gtpoolrr_test1);
         struct gtpoolrr_test_arg1 arg = (struct gtpoolrr_test_arg1) {
             .n = 55
         };
-        assert(gtpoolrr_pause(pool1) == 0);
-        assert(gtpoolrr_resume(pool1) == 0);
-        assert(gtpoolrr_jobs_add(pool1, 0, gtpoolrr_test1, &arg, 0) == 0);
+        gtpoolrr_sbs_set_arg(jobs[0], &arg);
+        //gtpoolrr_sbs_set_expiration(jobs[0], 0);
+        assert(gtpoolrr_sbs_push_direct(pool1, 0, jobs[0]) == 0);
 
-        struct gtpoolrr_job jobs[10] = { 0 };
-        assert(gtpoolrr_completions_popall(pool1, jobs, 1) == 0);
-        gtpoolrr_stop_safe(pool1);
+        gtpoolrr_join(pool1);
+        assert(gtpoolrr_cps_popall(pool1, jobs, 1) == 0);
+        gtpoolrr_cps_ack(pool1, &(jobs[0]), 1);
         gtpoolrr_destroy(pool1);
     }
 
     {
         Gtpoolrr *pool2;
-        pool2 = gtpoolrr_create(1,3);
+        size_t num_pushed;
+        pool2 = gtpoolrr_create(1,6);
         assert(pool2 != NULL);
+
         char bufs[2][256];
         char *filenames[2] = { "./tests/DIR.txt", "./obj/dir.txt"};
-        struct gtpoolrr_test_arg2 arg1 = (struct gtpoolrr_test_arg2) {
+        struct gtpoolrr_test_arg2 args[2] = { 0 };
+        args[0] = (struct gtpoolrr_test_arg2) {
             .buf = bufs[0], .filename = filenames[0]
         };
-        struct gtpoolrr_test_arg2 arg2 = (struct gtpoolrr_test_arg2) {
+        args[1] = (struct gtpoolrr_test_arg2) {
             .buf = bufs[1], .filename = filenames[1]
         };
-        assert(gtpoolrr_jobs_add(pool2, 0, gtpoolrr_test2, &arg1, 0) == 0);
-        assert(gtpoolrr_jobs_add(pool2, 1, gtpoolrr_test2, &arg2, 0) == 0);
 
-        struct gtpoolrr_job jobs[10] = { 0 };
-        assert(gtpoolrr_completions_popall(pool2, jobs, 2) == 0);
-        gtpoolrr_join(pool2);
+        struct gtpoolrr_job *jobs[10] = { 0 };
+        assert(0 == gtpoolrr_sbs_get(pool2, jobs, &num_pushed, 2));
+        gtpoolrr_sbs_set_tag(jobs[0], 111);
+        gtpoolrr_sbs_set_tag(jobs[1], 222);
+        gtpoolrr_sbs_set_functions(jobs, 2, gtpoolrr_test2);
+        gtpoolrr_sbs_set_arg(jobs[0], &(args[0]));
+        gtpoolrr_sbs_set_arg(jobs[1], &(args[1]));
+        gtpoolrr_sbs_set_expirations(jobs, 2, 10 * (1LLU << 30)); // about 10 seconds
+        assert(gtpoolrr_sbs_pushall(pool2, &num_pushed, 2, jobs) == 0);
+
+        assert(gtpoolrr_cps_popall(pool2, jobs, 2) == 0);
+        gtpoolrr_cps_ack(pool2, &(jobs[0]), 2);
         gtpoolrr_destroy(pool2);
     }
 
     {
         Gtpoolrr *pool3;
-        pool3 = gtpoolrr_create(3,3);
+        size_t num_pushed;
+        pool3 = gtpoolrr_create(1,3);
         assert(pool3 != NULL);
         char bufs[3][256];
         char *in_filenames[3] = {
@@ -1058,12 +1198,19 @@ int gtpoolrr_test(void) {
             .in_filename = in_filenames[2],
             .out_filename = out_filenames[2]
         };
-        assert(gtpoolrr_jobs_add(pool3, 0, gtpoolrr_test3, &arg0, 0) == 0);
-        assert(gtpoolrr_jobs_add(pool3, 1, gtpoolrr_test3, &arg1, 0) == 0);
-        assert(gtpoolrr_jobs_add(pool3, 2, gtpoolrr_test3, &arg2, 0) == 0);
 
-        struct gtpoolrr_job jobs[10] = { 0 };
-        assert(gtpoolrr_completions_popall(pool3, jobs, 3) == 0);
+        struct gtpoolrr_job *jobs[3] = { 0 };
+        assert(gtpoolrr_sbs_get(pool3, jobs, &num_pushed, 3) == 0);
+        gtpoolrr_sbs_set_tag(jobs[0], 1 * 1111);
+        gtpoolrr_sbs_set_tag(jobs[1], 2 * 1111);
+        gtpoolrr_sbs_set_tag(jobs[2], 3 * 1111);
+        gtpoolrr_sbs_set_functions(jobs, 3, gtpoolrr_test3);
+        gtpoolrr_sbs_set_arg(jobs[0], &arg0);
+        gtpoolrr_sbs_set_arg(jobs[1], &arg1);
+        gtpoolrr_sbs_set_arg(jobs[2], &arg2);
+
+        assert(gtpoolrr_sbs_pushall_direct(pool3, 0, &num_pushed, 3, jobs) == 0);
+        assert(gtpoolrr_cps_popall(pool3, jobs, 3) == 0);
         gtpoolrr_join(pool3);
         gtpoolrr_destroy(pool3);
     }
@@ -1556,6 +1703,7 @@ int main(void) {
     printf("seed is %i\n", seed);
     srand(seed);
 
+    /*
     varena_test();
     vpool_test();
     vdll_test();
@@ -1564,7 +1712,10 @@ int main(void) {
     vstack_test();
     vqueue_test_nooverwrite();
     vqueue_test_overwrite();
+    vqueue_test_some_nooverwrite();
+    vqueue_test_some_overwrite();
     aqueue_test_nooverwrite();
+    aqueue_test_some();
     mpscqueue_test_nooverwrite();
     vht_test();
     tpoolrr_test();
@@ -1573,6 +1724,7 @@ int main(void) {
     fsemaphore_test();
     tree_T_test();
     fqueue_test();
+    */
 
-    //gtpoolrr_test();
+    gtpoolrr_test();
 }

@@ -24,6 +24,9 @@ typedef struct vqueue {
     // current position of the last element of the queue
     size_t back;
 
+    // need to have distinct length field because back may be less than front
+    size_t len;
+
     // total number of elements this queue can store, if empty
     size_t cap;
 } Vqueue;
@@ -38,7 +41,7 @@ size_t vqueue_advise(size_t elem_size, size_t num_elems);
 size_t vqueue_advisev(size_t num_queues, size_t elem_size, size_t num_elems);
 
 // Initializes a Vqueue.
-int vqueue_init(Vqueue *queue, size_t elem_size, size_t num_elems);
+int vqueue_init(Vqueue **queue, void *memory, size_t elem_size, size_t num_elems);
 
 // Initialize for many
 int vqueue_initv(size_t num_queues, Vqueue *dest[], void *memory, size_t elem_size, size_t num_elems);
@@ -57,6 +60,14 @@ int vqueue_enqueue(Vqueue *queue, void *src, bool overwrite);
 
 // Dequeues front element of queue into dest.
 int vqueue_dequeue(Vqueue *queue, void *dest);
+
+// Try to enqueue several elements
+// The amount that were able to be enqueued is stored in num_enqueued
+int vqueue_enqueue_some(Vqueue *queue, size_t *num_enqueued, size_t enqueue_this_many, void *src, bool overwrite);
+
+// Try to dequeue several elements
+// The amount that were able to be dequeued is stored in num_dequeued
+int vqueue_dequeue_some(Vqueue *queue, size_t *num_dequeued, size_t dequeue_this_many, void *dest);
 
 // Gets the contents of the front of the queue.
 int vqueue_front(Vqueue *queue, void *dest);

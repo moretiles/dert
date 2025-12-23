@@ -32,20 +32,6 @@ uint64_t gt_monotonic_time_now(void) {
     return (seconds * 1000) + milliseconds;
 }
 
-struct gtpoolrr_job gtpoolrr_job_construct(
-    uint64_t user_tag, void *(*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*),
-    void *arg, size_t expiration
-) {
-    struct gtpoolrr_job return_this;
-
-    return_this.user_tag = user_tag;
-    return_this.function = function;
-    return_this.arg = arg;
-    return_this.expiration = expiration;
-
-    return return_this;
-}
-
 struct gtpoolrr_worker_arg gtpoolrr_worker_arg_construct(Gtpoolrr *pool, size_t index) {
     struct gtpoolrr_worker_arg return_this;
 
@@ -56,9 +42,25 @@ struct gtpoolrr_worker_arg gtpoolrr_worker_arg_construct(Gtpoolrr *pool, size_t 
 }
 
 struct gtpoolrr_worker_desired_and_current_state {
-    _Atomic enum gtpoolrr_thread_state *desired_state;
-    _Atomic enum gtpoolrr_thread_state *current_state;
+    _Atomic volatile enum gtpoolrr_thread_state *desired_state;
+    _Atomic volatile enum gtpoolrr_thread_state *current_state;
 };
+
+struct gtpoolrr_job *gtpoolrr_job_run(
+    Gtpoolrr *volatile thread_pool, volatile size_t thread_index, Greent *volatile green_thread,
+    struct gtpoolrr_job *volatile job, void *volatile flags
+) {
+    if(job == NULL) {
+        return NULL;
+    }
+
+    job->ret = job->function(thread_pool, green_thread, job->arg);
+
+    job->thread_assigned_to = thread_index;
+    job->flags = flags; // this does nothing for now
+
+    return job;
+}
 
 void gtpoolrr_worker_destructor_current(void *varg) {
     if(varg == NULL) {
@@ -72,13 +74,13 @@ void gtpoolrr_worker_destructor_current(void *varg) {
 }
 
 void *gtpoolrr_worker(void *void_arg) {
-    volatile struct gtpoolrr_worker_arg *arg;
-    volatile Greent *running_thread;
+    struct gtpoolrr_worker_arg *arg;
+    Greent *volatile running_thread;
 
     struct io_uring_cqe *cqe;
     struct io_uring ring;
     Vert vert;
-    struct gtpoolrr_job job;
+    struct gtpoolrr_job *job;
     int res;
     size_t counter = 0;
 
@@ -87,17 +89,16 @@ void *gtpoolrr_worker(void *void_arg) {
     }
     arg = (struct gtpoolrr_worker_arg*) void_arg;
 
-    volatile Gtpoolrr *const pool = arg->pool;
+    Gtpoolrr *volatile const pool = arg->pool;
     const volatile size_t index = arg->index;
-    volatile Vpool *const green_threads = pointer_literal_addition(pool->green_threads, index * vpool_advise(pool->jobs_per_thread, greent_advise()));
-    volatile Greent **const thread_map = pointer_literal_addition(pool->thread_map, index * pool->jobs_per_thread * sizeof(Greent *));
-    volatile Vqueue *const ready_threads = pointer_literal_addition(pool->ready_threads, index * vqueue_advise(pool->jobs_per_thread, sizeof(Greent*)));
-    volatile Aqueue *const submission_queue = &(pool->job_submission_queues[index]);
-    volatile Aqueue *const completion_queue = &(pool->job_completion_queues[index]);
-    _Atomic volatile enum gtpoolrr_thread_state *const desired_state = &(pool->desired_states[index]);
-    _Atomic volatile enum gtpoolrr_thread_state *const current_state = &(pool->current_states[index]);
+    Vpool *volatile const green_threads = pointer_literal_addition(pool->green_threads, index * vpool_advise(pool->jobs_per_thread, greent_advise()));
+    Vqueue *volatile const ready_threads = pointer_literal_addition(pool->ready_threads, index * vqueue_advise(pool->jobs_per_thread, sizeof(Greent*)));
+    Aqueue *volatile const submission_queue = &(pool->job_submission_queues[index]);
+    Aqueue *volatile const completion_queue = &(pool->job_completion_queues[index]);
+    _Atomic enum gtpoolrr_thread_state *volatile const desired_state = &(pool->desired_states[index]);
+    _Atomic enum gtpoolrr_thread_state *volatile const current_state = &(pool->current_states[index]);
 
-    const int io_uring_queue_init_res = io_uring_queue_init(pool->jobs_per_thread * 10, &ring, 0);
+    const int io_uring_queue_init_res = io_uring_queue_init(pool->jobs_per_thread * 100, &ring, 0);
     if(io_uring_queue_init_res < 0) {
         // lock mutex and set state to stopped
         return NULL;
@@ -108,7 +109,6 @@ void *gtpoolrr_worker(void *void_arg) {
         size_t num_submissions = 0;
         greent_do_submit((Greent *) running_thread, &ring, &num_submissions);
         if(num_submissions > 0) {
-            thread_map[running_thread->unique_id] = running_thread;
             running_thread = NULL;
         }
     }
@@ -143,20 +143,18 @@ void *gtpoolrr_worker(void *void_arg) {
         }
 
         // inlining the use of desired state because of some problems with _Atomic volatile enums
-        //switch(*desired_state)
-        switch(pool->desired_states[index]) {
+        switch(*desired_state) {
         case GTPOOLRR_THREAD_STATE_ACTIVE:
-            pool->current_states[index] = GTPOOLRR_THREAD_STATE_ACTIVE;
-            // inlining the use of current state because of some problems with _Atomic volatile enums
+            *current_state = GTPOOLRR_THREAD_STATE_ACTIVE;
             break;
         case GTPOOLRR_THREAD_STATE_PAUSED:
-            // inlining the use of current state because of some problems with _Atomic volatile enums
-            pool->current_states[index] = GTPOOLRR_THREAD_STATE_PAUSED;
+            *current_state = GTPOOLRR_THREAD_STATE_PAUSED;
             usleep(1000);
             continue;
             break;
         case GTPOOLRR_THREAD_STATE_JOINED:
             if(
+                running_thread == NULL &&
                 (aqueue_len((Aqueue *) submission_queue) == 0) &&
                 (vqueue_len((Vqueue *) ready_threads) == 0)
             ) {
@@ -179,7 +177,7 @@ void *gtpoolrr_worker(void *void_arg) {
 
         // Think about dealing with expiration
         if(running_thread == NULL) {
-            res = vqueue_dequeue((Vqueue *) ready_threads, &running_thread);
+            res = vqueue_dequeue((Vqueue *) ready_threads, (void *) &running_thread);
             if(res != 0 && res != ENODATA) {
                 assert(false);
             }
@@ -199,9 +197,9 @@ void *gtpoolrr_worker(void *void_arg) {
                 printf("Failed to dequeue!\n");
                 // maybe log???;
             }
-            printf("Got job %lu:%lu\n", index, (size_t) job.user_tag);
-            job.thread_assigned_to = index;
-            job.flags = 0;
+            printf("Got job %lu:%lu\n", index, (size_t) job->user_tag);
+            job->thread_assigned_to = index;
+            job->flags = 0;
 
             running_thread = vpool_alloc((Vpool *) green_threads);
             if(running_thread == NULL) {
@@ -211,12 +209,12 @@ void *gtpoolrr_worker(void *void_arg) {
                 running_thread->unique_id = counter++;
             }
 
-            job.function(pool, running_thread, job.arg);
-            thread_map[running_thread->unique_id] = NULL;
+            //job->function(pool, running_thread, job->arg);
+            gtpoolrr_job_run(pool, index, running_thread, job, 0);
             running_thread = NULL;
         }
 
-        printf("Completed job %lu:%lu\n", index, (size_t) job.user_tag);
+        printf("Completed job %lu:%lu\n", index, (size_t) job->user_tag);
         res = aqueue_enqueue((Aqueue *) completion_queue, &job);
         if(res != 0) {
             printf("Failed to enqueue!\n");
@@ -229,9 +227,8 @@ void *gtpoolrr_worker(void *void_arg) {
     // stack frames no longer used for functions so scan store stuff
     pthread_key_t destructor_key;
     struct gtpoolrr_worker_desired_and_current_state *destructor_arg = (void*) pool->green_threads;
-    // inlining both desired_state and current_state because of issues involving _Atomic volatile enum types
-    destructor_arg->desired_state = &(pool->desired_states[index]);
-    destructor_arg->current_state = &(pool->current_states[index]);
+    destructor_arg->desired_state = desired_state;
+    destructor_arg->current_state = current_state;
     pthread_key_create(&destructor_key, gtpoolrr_worker_destructor_current);
     pthread_setspecific(destructor_key, destructor_arg);
 
@@ -262,15 +259,14 @@ Gtpoolrr *gtpoolrr_create(size_t thread_count, size_t jobs_per_thread) {
 }
 
 size_t gtpoolrr_advise(size_t thread_count, size_t jobs_per_thread) {
-
     return (1 * sizeof(Gtpoolrr)) +
            (thread_count * sizeof(pthread_t)) +
            (thread_count * vpool_advise(jobs_per_thread, greent_advise())) +
-           (1 * greent_advisev(thread_count)) +
+           (1 * vpool_advise(thread_count * jobs_per_thread, sizeof(struct gtpoolrr_job))) +
            (1 * vqueue_advisev(thread_count, jobs_per_thread, sizeof(Greent *))) +
            (thread_count * sizeof(struct gtpoolrr_worker_arg)) +
-           (1 * aqueue_advisev(thread_count, sizeof(struct gtpoolrr_job), jobs_per_thread)) + // submissions
-           (1 * aqueue_advisev(thread_count, sizeof(struct gtpoolrr_job), jobs_per_thread)) + // completions
+           (1 * aqueue_advisev(thread_count, sizeof(struct gtpoolrr_job*), jobs_per_thread)) + // submissions
+           (1 * aqueue_advisev(thread_count, sizeof(struct gtpoolrr_job*), jobs_per_thread)) + // completions
            (thread_count * sizeof(_Atomic enum gtpoolrr_thread_state)) +
            (thread_count * sizeof(_Atomic enum gtpoolrr_thread_state));
 }
@@ -297,16 +293,16 @@ int gtpoolrr_init(Gtpoolrr **dest, void *memory, size_t thread_count, size_t job
         ptr = pointer_literal_addition(ptr, thread_count * sizeof(pthread_t));
         pool->green_threads = ptr;
         ptr = pointer_literal_addition(ptr, thread_count * vpool_advise(jobs_per_thread, greent_advise()));
-        pool->thread_map = ptr;
-        ptr = pointer_literal_addition(ptr, thread_count * jobs_per_thread * sizeof(Greent*));
+        pool->jobs = ptr;
+        ptr = pointer_literal_addition(ptr, vpool_advise(thread_count * jobs_per_thread, sizeof(struct gtpoolrr_job)));
         pool->ready_threads = ptr;
-        ptr = pointer_literal_addition(ptr, vqueue_advisev(thread_count, jobs_per_thread, sizeof(Greent*)));
+        ptr = pointer_literal_addition(ptr, vqueue_advise(thread_count * jobs_per_thread, sizeof(Greent*)));
         pool->worker_args = ptr;
         ptr = pointer_literal_addition(ptr, thread_count * sizeof(struct gtpoolrr_worker_arg));
         pool->job_submission_queues = ptr;
-        ptr = pointer_literal_addition(ptr, 1 * aqueue_advisev(thread_count, sizeof(struct gtpoolrr_job), jobs_per_thread));
+        ptr = pointer_literal_addition(ptr, 1 * aqueue_advisev(thread_count, sizeof(struct gtpoolrr_job*), jobs_per_thread));
         pool->job_completion_queues = ptr;
-        ptr = pointer_literal_addition(ptr, 1 * aqueue_advisev(thread_count, sizeof(struct gtpoolrr_job), jobs_per_thread));
+        ptr = pointer_literal_addition(ptr, 1 * aqueue_advisev(thread_count, sizeof(struct gtpoolrr_job*), jobs_per_thread));
         pool->desired_states = ptr;
         ptr = pointer_literal_addition(ptr, thread_count * sizeof(_Atomic enum gtpoolrr_thread_state));
         pool->current_states = ptr;
@@ -315,15 +311,19 @@ int gtpoolrr_init(Gtpoolrr **dest, void *memory, size_t thread_count, size_t job
 
     // Actually initialize
     {
+        res = vpool_init(&(pool->jobs), pool->jobs, thread_count * jobs_per_thread, sizeof(struct gtpoolrr_job), VPOOL_KIND_STATIC);
+        if(res != 0) {
+            return res;
+        }
         res = vqueue_initv(thread_count, &(pool->ready_threads), pool->ready_threads, sizeof(Greent*), jobs_per_thread);
         if(res != 0) {
             return res;
         }
-        res = aqueue_initv(thread_count, &(pool->job_submission_queues), (void *) pool->job_submission_queues, sizeof(struct gtpoolrr_job), jobs_per_thread);
+        res = aqueue_initv(thread_count, &(pool->job_submission_queues), (void *) pool->job_submission_queues, sizeof(struct gtpoolrr_job*), jobs_per_thread);
         if(res != 0) {
             return res;
         }
-        res = aqueue_initv(thread_count, &(pool->job_completion_queues), (void *) pool->job_completion_queues, sizeof(struct gtpoolrr_job), jobs_per_thread);
+        res = aqueue_initv(thread_count, &(pool->job_completion_queues), (void *) pool->job_completion_queues, sizeof(struct gtpoolrr_job*), jobs_per_thread);
         if(res != 0) {
             return res;
         }
@@ -375,26 +375,30 @@ void gtpoolrr_destroy(Gtpoolrr *pool) {
     return;
 }
 
-int _gtpoolrr_jobs_add_rr(Gtpoolrr *pool, struct gtpoolrr_job job) {
-    size_t i, index, len, cap;
+int gtpoolrr_sbs_push(Gtpoolrr *pool, struct gtpoolrr_job *job) {
+    return gtpoolrr_sbs_push_rr(pool, job);
+}
+
+int gtpoolrr_sbs_pushall( Gtpoolrr *pool, size_t *num_pushed, size_t num_to_push, struct gtpoolrr_job *jobs[]) {
+    return gtpoolrr_sbs_pushall_rr(pool, num_pushed, num_to_push, jobs);
+}
+
+int gtpoolrr_sbs_push_rr(Gtpoolrr *pool, struct gtpoolrr_job *job) {
     int res;
 
-    if(pool == NULL || job.function == NULL || job.arg == NULL) {
+    if(pool == NULL || job->function == NULL || job->arg == NULL) {
         return EINVAL;
     }
 
-    for(i = 0; i <= pool->threads_total; i++) {
-        index = (i + pool->rr_index) % pool->threads_total;
-        len = aqueue_len(&(pool->job_submission_queues[index]));
-        cap = aqueue_cap(&(pool->job_submission_queues[index]));
-        if(len == cap) {
-            // cannot push
-            continue;
-        }
+    for(size_t i = 0; i <= pool->threads_total; i++) {
+        size_t index = (i + pool->rr_index) % pool->threads_total;
 
-        res = aqueue_enqueue(&(pool->job_submission_queues[index]), &job);
+        res = gtpoolrr_sbs_push_direct(pool, index, job);
         if(res != 0) {
-            goto _gtpoolrr_jobs_add_rr_error;
+            goto gtpoolrr_sbs_push_rr_error;
+        } else if(res == EXFULL) {
+            // try again for next
+            continue;
         }
 
         pool->rr_index += 1;
@@ -404,12 +408,31 @@ int _gtpoolrr_jobs_add_rr(Gtpoolrr *pool, struct gtpoolrr_job job) {
     // tried to push to all threads and failed
     res = EBUSY;
 
-_gtpoolrr_jobs_add_rr_error:
+gtpoolrr_sbs_push_rr_error:
     return res;
 }
 
-int _gtpoolrr_jobs_add_direct(Gtpoolrr *pool, size_t thread_index, struct gtpoolrr_job job) {
-    if(pool == NULL || job.function == NULL || job.arg == NULL) {
+int gtpoolrr_sbs_pushall_rr(Gtpoolrr *pool, size_t *num_pushed, size_t num_to_push, struct gtpoolrr_job *jobs[]) {
+    int res;
+    if(pool == NULL || num_pushed == NULL || jobs == NULL) {
+        return EINVAL;
+    }
+
+    *num_pushed = 0;
+    for(size_t i = 0; i < num_to_push; i++){
+        res = gtpoolrr_sbs_push_rr(pool, jobs[i]);
+        if(res != 0){
+            return res;
+        }
+
+        *num_pushed += 1;
+    }
+
+    return 0;
+}
+
+int gtpoolrr_sbs_push_direct(Gtpoolrr *pool, size_t thread_index, struct gtpoolrr_job *job) {
+    if(pool == NULL || job->function == NULL || job->arg == NULL) {
         return EINVAL;
     }
 
@@ -421,190 +444,26 @@ int _gtpoolrr_jobs_add_direct(Gtpoolrr *pool, size_t thread_index, struct gtpool
     return 0;
 }
 
-int gtpoolrr_jobs_add(
-    Gtpoolrr *pool, uint64_t user_tag,
-    void *(*function)(volatile Gtpoolrr*, volatile Greent *, volatile void*),
-    void *arg, uint64_t expiration
+int gtpoolrr_sbs_pushall_direct(
+    Gtpoolrr *pool, size_t thread_index, size_t *num_pushed, size_t num_to_push,
+    struct gtpoolrr_job *jobs[]
 ) {
-    return gtpoolrr_jobs_add_rr(pool, user_tag, function, arg, expiration);
-}
-
-int gtpoolrr_jobs_addall(
-    Gtpoolrr *pool, size_t count, size_t *num_completed, uint64_t user_tags[],
-    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *args[], uint64_t expiration
-) {
-    return gtpoolrr_jobs_addall_rr(pool, count, num_completed, user_tags, functions, args, expiration);
-}
-
-int gtpoolrr_jobs_assign(
-    Gtpoolrr *pool, uint64_t user_tag,
-    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *arg, size_t expiration
-) {
-    int ret = 0;
-    int res = 0;
-    uint64_t expiration_as_monotonic_time;
-    struct gtpoolrr_job job = { 0 };
-
-    if(pool == NULL || function == NULL || arg == NULL) {
-        ret = EINVAL;
-        goto gtpoolrr_jobs_assign_end;
-    }
-
-    if(expiration == 0) {
-        expiration_as_monotonic_time = 0;
-    } else {
-        expiration_as_monotonic_time = gt_monotonic_time_now() + expiration;
-    }
-
-    // need to create job here to use so that gtpoolrr_jobs_add can be called with jobs that all have the same end time
-    job = gtpoolrr_job_construct(user_tag, function, arg, expiration_as_monotonic_time);
-
-    // Make sure there is space for one additional job on every thread or fail with EBUSY
-    for(size_t i = 0; i < pool->threads_total; i++) {
-        if(gtpoolrr_submissions_empty(pool) == 0) {
-            return EBUSY;
-        }
-    }
-
-    // Enqueue job
-    for(size_t i = 0; i < pool->threads_total; i++) {
-        // _gtpoolrr_jobs_add_rr increments rr_index by 1 if it succeeds in enqueueing a job
-        // As it is confirmed in the prior loop that a job can be added to each thread this never fails with EBUSY
-        res = _gtpoolrr_jobs_add_direct(pool, i, job);
-
-        // only reason failure is critical threading problem
-#if GTPOOLRR_LET_UNRECOVERABLE_ERRORS_FAIL_SILENTLY
-        res = res;
-#else
-        assert(res == 0);
-#endif
-    }
-
-gtpoolrr_jobs_assign_end:
-    return ret;
-}
-
-int gtpoolrr_jobs_add_direct(
-    Gtpoolrr *pool, size_t thread_index, uint64_t user_tag,
-    void *(*function)(volatile Gtpoolrr*, volatile Greent *, volatile void*),
-    void *arg, uint64_t expiration
-) {
-    uint64_t expiration_as_monotonic_time;
-    if(pool == NULL || function == NULL || arg == NULL) {
+    int res;
+    if(pool == NULL || num_pushed == NULL || jobs == NULL) {
         return EINVAL;
     }
 
-    if(expiration == 0) {
-        expiration_as_monotonic_time = 0;
-    } else {
-        expiration_as_monotonic_time = gt_monotonic_time_now() + expiration;
-    }
-
-    struct gtpoolrr_job job = gtpoolrr_job_construct(user_tag, function, arg, expiration_as_monotonic_time);
-    return _gtpoolrr_jobs_add_direct(pool, thread_index, job);
-}
-
-int gtpoolrr_jobs_addall_direct(
-    Gtpoolrr *pool, size_t thread_index, size_t count, size_t *num_completed, uint64_t user_tags[],
-    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *args[], uint64_t expiration
-) {
-    int ret = 0;
-    int res;
-    uint64_t expiration_as_monotonic_time;
-    struct gtpoolrr_job job = { 0 };
-    size_t i = 0;
-
-    if(pool == NULL || count == 0 || num_completed == NULL || user_tags == NULL || functions == NULL || args == NULL) {
-        ret = EINVAL;
-        goto gtpoolrr_jobs_addall_direct_end;
-    }
-
-    if(expiration == 0) {
-        expiration_as_monotonic_time = 0;
-    } else {
-        expiration_as_monotonic_time = gt_monotonic_time_now() + expiration;
-    }
-
-    for(i = 0; i < count; i++) {
-        for(size_t j = 0; j < 3; j++) {
-            // need to use monotonic api rather than relative time so that all jobs have same end time
-            job = gtpoolrr_job_construct(user_tags[i], functions[i], args[i], expiration_as_monotonic_time);
-            res = _gtpoolrr_jobs_add_direct(pool, thread_index, job);
+    *num_pushed = 0;
+    for(size_t i = 0; i < num_to_push; i++){
+        res = gtpoolrr_sbs_push_direct(pool, thread_index, jobs[i]);
+        if(res != 0){
+            return res;
         }
 
-        if(res != 0) {
-            ret = res;
-            goto gtpoolrr_jobs_addall_direct_end;
-        }
+        *num_pushed += 1;
     }
 
-gtpoolrr_jobs_addall_direct_end:
-    *num_completed = i;
-    return ret;
-}
-
-
-int gtpoolrr_jobs_add_rr(
-    Gtpoolrr *pool, uint64_t user_tag,
-    void *(*function)(volatile Gtpoolrr*, volatile Greent *, volatile void*),
-    void *arg, uint64_t expiration
-) {
-    uint64_t expiration_as_monotonic_time;
-    if(pool == NULL || function == NULL || arg == NULL) {
-        return EINVAL;
-    }
-
-    if(expiration == 0) {
-        expiration_as_monotonic_time = 0;
-    } else {
-        expiration_as_monotonic_time = gt_monotonic_time_now() + expiration;
-    }
-
-    struct gtpoolrr_job job = gtpoolrr_job_construct(user_tag, function, arg, expiration_as_monotonic_time);
-    return _gtpoolrr_jobs_add_rr(pool, job);
-}
-
-int gtpoolrr_jobs_addall_rr(
-    Gtpoolrr *pool, size_t count, size_t *num_completed, uint64_t user_tags[],
-    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *args[], uint64_t expiration
-) {
-    int ret = 0;
-    int res;
-    uint64_t expiration_as_monotonic_time;
-    struct gtpoolrr_job job = { 0 };
-    size_t i = 0;
-
-    if(pool == NULL || count == 0 || num_completed == NULL || user_tags == NULL || functions == NULL || args == NULL) {
-        ret = EINVAL;
-        goto gtpoolrr_jobs_addall_rr_end;
-    }
-
-    if(expiration == 0) {
-        expiration_as_monotonic_time = 0;
-    } else {
-        expiration_as_monotonic_time = gt_monotonic_time_now() + expiration;
-    }
-
-    for(i = 0; i < count; i++) {
-        for(size_t j = 0; j < 3; j++) {
-            // need to use monotonic api rather than relative time so that all jobs have same end time
-            job = gtpoolrr_job_construct(user_tags[i], functions[i], args[i], expiration_as_monotonic_time);
-            res = _gtpoolrr_jobs_add_rr(pool, job);
-        }
-
-        if(res != 0) {
-            ret = res;
-            goto gtpoolrr_jobs_addall_rr_end;
-        }
-    }
-
-gtpoolrr_jobs_addall_rr_end:
-    *num_completed = i;
-    return ret;
+    return 0;
 }
 
 int gtpoolrr_pause(Gtpoolrr *pool) {
@@ -729,8 +588,136 @@ int gtpoolrr_handler_call(Gtpoolrr *pool, Greent *green_thread, void *arg, void 
     return 0;
 }
 
-int gtpoolrr_completions_pop(Gtpoolrr *pool, struct gtpoolrr_job *dest) {
-    struct gtpoolrr_job job;
+int gtpoolrr_sbs_get(
+    Gtpoolrr *thread_pool, struct gtpoolrr_job *jobs_dest[],
+    size_t *num_obtained, size_t num_requested
+) {
+    struct gtpoolrr_job *job;
+    if(thread_pool == NULL || jobs_dest == NULL || num_obtained == NULL || num_requested == 0) {
+        return EINVAL;
+    }
+
+    *num_obtained = 0;
+
+    for(size_t i = 0; i < num_requested; i++) {
+        job = vpool_alloc(thread_pool->jobs);
+        memset(job, 0, sizeof(struct gtpoolrr_job));
+        if(job == NULL){
+            return ENODATA;
+        }
+
+        jobs_dest[i] = job;
+        *num_obtained += 1;
+    }
+
+    return 0;
+}
+
+void gtpoolrr_cps_ack(Gtpoolrr *thread_pool, struct gtpoolrr_job *done_jobs[], size_t num_acknowledged) {
+    if(thread_pool == NULL || done_jobs == NULL || num_acknowledged == 0) {
+        return;
+    }
+
+    for(size_t i = 0; i < num_acknowledged; i++) {
+        if(vpool_dealloc(thread_pool->jobs, done_jobs[i]) != 0){
+            assert(false);
+        }
+    }
+
+    return;
+}
+
+void gtpoolrr_sbs_set_tag(struct gtpoolrr_job *job, uint64_t user_tag) {
+    if(job == NULL) {
+        return;
+    }
+
+    job->user_tag = user_tag;
+    return;
+}
+
+void gtpoolrr_sbs_set_function(
+    struct gtpoolrr_job *job,
+    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*))
+) {
+    if(job == NULL) {
+        return;
+    }
+
+    job->function = function;
+    return;
+}
+void gtpoolrr_sbs_set_arg(struct gtpoolrr_job *job, void *arg) {
+    if(job == NULL) {
+        return;
+    }
+
+    job->arg = arg;
+    return;
+}
+
+void gtpoolrr_sbs_set_expiration(struct gtpoolrr_job *job, uint64_t nanoseconds_from_now) {
+    if(job == NULL) {
+        return;
+    }
+
+    job->expiration = gt_monotonic_time_now() + nanoseconds_from_now;
+    return;
+}
+
+void gtpoolrr_sbs_set_tags(struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for, uint64_t user_tag) {
+    if(jobs == NULL || num_jobs_to_set_for == 0) {
+        return;
+    }
+
+    for(size_t i = 0; i < num_jobs_to_set_for; i++) {
+        jobs[i]->user_tag = user_tag;
+    }
+
+    return;
+}
+
+void gtpoolrr_sbs_set_functions(
+    struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for,
+    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*))
+) {
+    if(jobs == NULL || num_jobs_to_set_for == 0) {
+        return;
+    }
+
+    for(size_t i = 0; i < num_jobs_to_set_for; i++) {
+        jobs[i]->function = function;
+    }
+
+    return;
+}
+void gtpoolrr_sbs_set_args(struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for, void *arg) {
+    if(jobs == NULL || num_jobs_to_set_for == 0) {
+        return;
+    }
+
+    for(size_t i = 0; i < num_jobs_to_set_for; i++) {
+        jobs[i]->arg = arg;
+    }
+
+    return;
+}
+void gtpoolrr_sbs_set_expirations(
+    struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for, uint64_t nanoseconds_from_now
+) {
+    if(jobs == NULL || num_jobs_to_set_for == 0) {
+        return;
+    }
+
+    for(size_t i = 0; i < num_jobs_to_set_for; i++) {
+        jobs[i]->expiration = gt_monotonic_time_now() + nanoseconds_from_now;
+    }
+
+    return;
+}
+
+int gtpoolrr_cps_pop(Gtpoolrr *pool, struct gtpoolrr_job **dest) {
+    struct gtpoolrr_job *job;
     bool done = false;
     if(pool == NULL || dest == NULL) {
         return EINVAL;
@@ -742,9 +729,7 @@ int gtpoolrr_completions_pop(Gtpoolrr *pool, struct gtpoolrr_job *dest) {
         const int aqueue_dequeue_res = aqueue_dequeue(&(pool->job_completion_queues[index]), &job);
         if(aqueue_dequeue_res == 0) {
             // found a completed job
-            if(memcpy(dest, &job, sizeof(struct gtpoolrr_job)) != dest) {
-                return ENOTRECOVERABLE;
-            }
+            *dest = job;
             done = true;
             break;
         } else if(aqueue_dequeue_res == ENODATA) {
@@ -763,65 +748,58 @@ int gtpoolrr_completions_pop(Gtpoolrr *pool, struct gtpoolrr_job *dest) {
     }
 }
 
-int gtpoolrr_completions_popsome(Gtpoolrr *pool, struct gtpoolrr_job dest[], size_t at_most, size_t *num_popped) {
-    size_t index_into_completion_queues = 0, index_into_dest = 0;
+int gtpoolrr_cps_popsome(Gtpoolrr *pool, struct gtpoolrr_job *dest[], size_t *num_popped, size_t at_most) {
     int res = 0;
+    size_t index = 0;
     if(pool == NULL || dest == NULL || at_most == 0 || num_popped == NULL) {
         res = EINVAL;
-        goto gtpoolrr_completions_popsome_end;
+        goto gtpoolrr_cps_popsome_end;
     }
 
-    while(index_into_completion_queues < at_most) {
-        const int aqueue_dequeue_res = aqueue_dequeue(
-                                           &(pool->job_completion_queues[index_into_completion_queues]),
-                                           &(dest[index_into_dest])
-                                       );
+    *num_popped = 0;
+    while(index < at_most) {
+        res = gtpoolrr_cps_pop(pool, &(dest[index]));
 
-        if(aqueue_dequeue_res == 0) {
-            // pass
-            index_into_completion_queues++;
-            index_into_dest++;
-        } else if(aqueue_dequeue_res == EBUSY) {
-            index_into_completion_queues++;
+        if(res == 0) {
+            index++;
         } else {
-            res = aqueue_dequeue_res;
-            goto gtpoolrr_completions_popsome_end;
+            goto gtpoolrr_cps_popsome_end;
         }
     }
 
-gtpoolrr_completions_popsome_end:
-    *num_popped = index_into_dest;
+gtpoolrr_cps_popsome_end:
+    *num_popped = index;
     return res;
 }
 
-int gtpoolrr_completions_popall(Gtpoolrr *pool, struct gtpoolrr_job dest[], size_t wait_for) {
+int gtpoolrr_cps_popall(Gtpoolrr *pool, struct gtpoolrr_job *dest[], size_t wait_for) {
     int res = 0;
     if(pool == NULL || dest == NULL || wait_for == 0) {
         res = EINVAL;
-        goto gtpoolrr_completions_popall_end;
+        goto gtpoolrr_cps_popall_end;
     }
 
     size_t i = 0;
     while(i < wait_for) {
-        const int gtpoolrr_completions_pop_res = gtpoolrr_completions_pop(pool, &(dest[i]));
+        const int gtpoolrr_cps_pop_res = gtpoolrr_cps_pop(pool, &(dest[i]));
 
-        if(gtpoolrr_completions_pop_res == 0) {
+        if(gtpoolrr_cps_pop_res == 0) {
             // pass
             i++;
-        } else if(gtpoolrr_completions_pop_res == EBUSY) {
+        } else if(gtpoolrr_cps_pop_res == EBUSY) {
             usleep(1000);
             continue;
         } else {
-            res = gtpoolrr_completions_pop_res;
-            goto gtpoolrr_completions_popall_end;
+            res = gtpoolrr_cps_pop_res;
+            goto gtpoolrr_cps_popall_end;
         }
     }
 
-gtpoolrr_completions_popall_end:
+gtpoolrr_cps_popall_end:
     return res;
 }
 
-size_t gtpoolrr_submissions_queued(Gtpoolrr *pool) {
+size_t gtpoolrr_sbs_queued(Gtpoolrr *pool) {
     size_t total = 0;
 
     if(pool == NULL) {
@@ -835,7 +813,7 @@ size_t gtpoolrr_submissions_queued(Gtpoolrr *pool) {
     return total;
 }
 
-size_t gtpoolrr_submissions_empty(Gtpoolrr *pool) {
+size_t gtpoolrr_sbs_empty(Gtpoolrr *pool) {
     size_t total = 0;
 
     if(pool == NULL) {
@@ -849,7 +827,7 @@ size_t gtpoolrr_submissions_empty(Gtpoolrr *pool) {
     return total;
 }
 
-size_t gtpoolrr_submissions_cap(Gtpoolrr *pool) {
+size_t gtpoolrr_sbs_cap(Gtpoolrr *pool) {
     if(pool == NULL) {
         return 0;
     }
@@ -857,7 +835,7 @@ size_t gtpoolrr_submissions_cap(Gtpoolrr *pool) {
     return pool->threads_total * pool->jobs_per_thread;
 }
 
-size_t gtpoolrr_completions_queued(Gtpoolrr *pool) {
+size_t gtpoolrr_cps_queued(Gtpoolrr *pool) {
     size_t total = 0;
 
     if(pool == NULL) {
@@ -871,7 +849,7 @@ size_t gtpoolrr_completions_queued(Gtpoolrr *pool) {
     return total;
 }
 
-size_t gtpoolrr_completions_empty(Gtpoolrr *pool) {
+size_t gtpoolrr_cps_empty(Gtpoolrr *pool) {
     size_t total = 0;
 
     if(pool == NULL) {
@@ -885,7 +863,7 @@ size_t gtpoolrr_completions_empty(Gtpoolrr *pool) {
     return total;
 }
 
-size_t gtpoolrr_completions_cap(Gtpoolrr *pool) {
+size_t gtpoolrr_cps_cap(Gtpoolrr *pool) {
     if(pool == NULL) {
         return 0;
     }
