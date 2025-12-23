@@ -159,6 +159,82 @@ int aqueue_dequeue(Aqueue *queue, void *dest) {
     return 0;
 }
 
+// Try to enqueue several elements
+// The amount that were able to be enqueued is stored in num_enqueued
+int aqueue_enqueue_some(Aqueue *queue, size_t *num_enqueued, size_t enqueue_this_many, void *src) {
+    int res;
+    if(queue == NULL || num_enqueued == NULL || enqueue_this_many == 0 || src == NULL) {
+        return EINVAL;
+    }
+
+    size_t how_many_can_be_enqueued = aqueue_cap(queue) - aqueue_len(queue);
+    if(how_many_can_be_enqueued == 0) {
+        return EXFULL;
+    }
+    size_t how_many_should_be_enqueued;
+    if(how_many_can_be_enqueued >= enqueue_this_many) {
+        how_many_should_be_enqueued = enqueue_this_many;
+        res = 0;
+    } else {
+        how_many_should_be_enqueued = how_many_can_be_enqueued;
+        res = EXFULL;
+    }
+
+    size_t enqueue_this_many_before_wrapping = queue->cap - aqueue_wrap(queue, queue->back);
+    void *dest = pointer_literal_addition(queue->elems, queue->elem_size * aqueue_wrap(queue, queue->back));
+    if(enqueue_this_many_before_wrapping >= how_many_should_be_enqueued) {
+        memcpy(dest, src, queue->elem_size * how_many_should_be_enqueued);
+    } else {
+        memcpy(dest, src, queue->elem_size * enqueue_this_many_before_wrapping);
+        size_t enqueue_this_many_after_wrapping = how_many_should_be_enqueued - enqueue_this_many_before_wrapping;
+        src = pointer_literal_addition(src, queue->elem_size * enqueue_this_many_before_wrapping);
+        memcpy(queue->elems, src, queue->elem_size * enqueue_this_many_after_wrapping);
+    }
+
+    queue->back += how_many_should_be_enqueued;
+    atomic_fetch_add_explicit(&(queue->len), how_many_should_be_enqueued, memory_order_release);
+    *num_enqueued = how_many_should_be_enqueued;
+    return res;
+}
+
+// Try to dequeue several elements
+// The amount that were able to be dequeued is stored in num_dequeued
+int aqueue_dequeue_some(Aqueue *queue, size_t *num_dequeued, size_t dequeue_this_many, void *dest) {
+    int res;
+    if(queue == NULL || num_dequeued == NULL || dequeue_this_many == 0 || dest == NULL) {
+        return EINVAL;
+    }
+
+    size_t how_many_can_be_dequeued = aqueue_len(queue);
+    if(how_many_can_be_dequeued == 0) {
+        return ENODATA;
+    }
+    size_t how_many_should_be_dequeued;
+    if(how_many_can_be_dequeued >= dequeue_this_many) {
+        how_many_should_be_dequeued = dequeue_this_many;
+        res = 0;
+    } else {
+        how_many_should_be_dequeued = how_many_can_be_dequeued;
+        res = ENODATA;
+    }
+
+    size_t dequeue_this_many_before_wrapping = queue->cap - aqueue_wrap(queue, queue->front);
+    void *src = pointer_literal_addition(queue->elems, queue->elem_size * aqueue_wrap(queue, queue->front));
+    if(dequeue_this_many_before_wrapping >= how_many_should_be_dequeued) {
+        memcpy(dest, src, queue->elem_size * how_many_should_be_dequeued);
+    } else {
+        memcpy(dest, src, queue->elem_size * dequeue_this_many_before_wrapping);
+        size_t dequeue_this_many_after_wrapping = how_many_should_be_dequeued - dequeue_this_many_before_wrapping;
+        dest = pointer_literal_addition(dest, queue->elem_size * dequeue_this_many_before_wrapping);
+        memcpy(dest, queue->elems, queue->elem_size * dequeue_this_many_after_wrapping);
+    }
+
+    queue->front += how_many_should_be_dequeued;
+    atomic_fetch_sub_explicit(&(queue->len), how_many_should_be_dequeued, memory_order_release);
+    *num_dequeued = how_many_should_be_dequeued;
+    return res;
+}
+
 int aqueue_front(Aqueue *queue, void *dest) {
     void *front;
 

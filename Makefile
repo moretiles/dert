@@ -9,7 +9,7 @@ LIB=-lm -luring
 TEST_LIB=${GRAPHVIZ_LIB}
 
 DEBUG=-g3 -gdwarf-4 -ggdb
-OPTIMIZE=-O2
+OPTIMIZE=-O3
 
 ASAN=-fsanitize=address -fno-sanitize-address-use-after-scope
 TSAN=-fsanitize=thread
@@ -38,7 +38,7 @@ Clean:
 	# required build files
 	rm -f test tags *.ast *.pch *.plist obj/*.o externalDefMap.txt gmon.out
 
-libdert.a: obj/siphash.o obj/vstack.o obj/vqueue.o obj/vdll.o obj/tbuf.o obj/varena.o obj/vpool.o obj/varray.o obj/vht.o obj/fqueue.o obj/cstring.o obj/aqueue.o obj/mpscqueue.o obj/tpoolrr.o obj/gtpoolrr.o obj/fmutex.o obj/fsemaphore.o obj/tree_T.o obj/tree_iterator.o obj/tree_iterator_pre.o obj/tree_iterator_in.o obj/tree_iterator_post.o obj/tree_iterator_bfs.o obj/greent.o obj/greent_asm.o obj/pointerarith.o
+libdert.a: obj/siphash.o obj/vstack.o obj/vqueue.o obj/vdll.o obj/tbuf.o obj/varena.o obj/vpool.o obj/varray.o obj/vht.o obj/fqueue.o obj/cstring.o obj/aqueue.o obj/mpscqueue.o obj/tpoolrr.o obj/gtpoolrr.o obj/fmutex.o obj/fsemaphore.o obj/tree_T.o obj/tree_iterator.o obj/tree_iterator_pre.o obj/tree_iterator_in.o obj/tree_iterator_post.o obj/tree_iterator_bfs.o obj/greent.o obj/greent_asm.o obj/pointerarith.o obj/tld.o
 	ar rcs libdert.a obj/*.o
 
 ## required dependency recipes

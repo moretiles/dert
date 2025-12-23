@@ -44,33 +44,11 @@
 // STOPPED state means the thread should call pthread_join as soon as its current job is done
 // CANCELLED state means the thread has been cancelled through pthread_cancel
 enum gtpoolrr_thread_state {
-    GTPOOLRR_THREAD_STATE_ACTIVE,
-    GTPOOLRR_THREAD_STATE_PAUSED,
-    GTPOOLRR_THREAD_STATE_JOINED,
-    GTPOOLRR_THREAD_STATE_STOPPED,
-    GTPOOLRR_THREAD_STATE_CANCELLED
-};
-
-// Strategy to use when assigning work to threads
-// ROUNDROBIN strategy means that work is distributed in round robin order
-// HASHED strategy means that each piece of work is distributed by hashing a key
-enum gtpoolrr_thread_strategy {
-    GTPOOLRR_THREAD_STRATEGY_ROUNDROBIN,
-    GTPOOLRR_THREAD_STRATEGY_HASHED
-};
-
-// Number of type of threads that should be created
-// NOTHREAD backend means creating worker threads and starting them with a main function is left to end-user
-// ONETHREAD backend means one worker thread is created and handles incoming work across all channels
-// MANYTHREADS backend means num_threads worker threads are created and each handles incoming work on one channel
-// ONEGREENTHREAD backend means one worker thread is created and is used to spawn green threads
-// MANYGREENTHREADS backend means num_threads worker threads are created and each spawns green threads
-enum gtpoolrr_thread_backend {
-    GTPOOLRR_THREAD_BACKEND_NOTHREAD,
-    GTPOOLRR_THREAD_BACKEND_ONETHREAD,
-    GTPOOLRR_THREAD_BACKEND_MANYTHREADS,
-    GTPOOLRR_THREAD_BACKEND_ONEGREENTHREAD,
-    GTPOOLRR_THREAD_BACKEND_MANYGREENTHREADS
+    GTPOOLRR_THREAD_STATE_ACTIVE = 0,
+    GTPOOLRR_THREAD_STATE_PAUSED = 1,
+    GTPOOLRR_THREAD_STATE_JOINED = 2,
+    GTPOOLRR_THREAD_STATE_STOPPED = 3,
+    GTPOOLRR_THREAD_STATE_CANCELLED = 4
 };
 
 // Round-Robin Thread Pool
@@ -85,8 +63,8 @@ typedef struct gtpoolrr {
     // The green threads used by the threads themselves
     Vpool **green_threads;
 
-    // Used by each thread to map from unique_id to the green thread pointer itself
-    Greent **thread_map;
+    // Used to allocate jobs used for submissions and completions
+    Vpool *jobs;
 
     // Used by each thread to track its ready threads
     Vqueue *ready_threads;
@@ -111,7 +89,7 @@ typedef struct gtpoolrr {
     // Handler function that worker thread jobs can call to supervise
     void *((*handler_function)(volatile struct gtpoolrr *pool, volatile Greent *thread, volatile void *arg));
 
-    // Index used to control the next thread a job should be added to
+    // Index used to control the next thread a job should be pushed to
     size_t rr_index;
 
     // Number of total threads, set when creating/initializing
@@ -128,19 +106,19 @@ struct gtpoolrr_job {
     // cosmetic
     uint64_t user_tag;
 
-    // used during submission
-    struct {
-        void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*));
-        void *arg;
-        uint64_t expiration;
-    };
+        // used during submission
+        struct {
+            void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*));
+            void *arg;
+            uint64_t expiration;
+        };
 
-    // used during completion
-    struct {
-        size_t thread_assigned_to;
-        void *ret;
-        void *flags;
-    };
+        // used during completion
+        struct {
+            size_t thread_assigned_to;
+            void *ret;
+            void *flags;
+        };
 };
 
 typedef void *((*Gtpoolrr_fn) (volatile Gtpoolrr *, volatile Greent *, volatile void *));
@@ -193,93 +171,101 @@ int gtpoolrr_handler_update(Gtpoolrr *pool, void *((*function)(volatile Gtpoolrr
 // By default no handler is used
 int gtpoolrr_handler_call(Gtpoolrr *pool, Greent *green_thread, void *arg, void **retval);
 
-// Add one job to the thread_pool
-// When freshness is 0 then it is not enforced that this job should start before some time in the future
-// When freshness is not 0 then this job is allowed to run only if less than expiration milliseconds have passed
-int gtpoolrr_jobs_add(
-    Gtpoolrr *pool, uint64_t user_tag,
-    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *arg, size_t expiration
+// Get number of submitted jobs the thread pool has in its current backlog
+// This is by its nature an O(N) operation
+size_t gtpoolrr_sbs_queued(Gtpoolrr *pool);
+
+// Get number of submitted jobs the thread pool can accept with its current backlog
+// This is by its nature an O(N) operation
+size_t gtpoolrr_sbs_empty(Gtpoolrr *pool);
+
+// Get number of submitted jobs the thread pool can accept assuming no jobs are currently queued
+// This is by its nature an O(N) operation
+size_t gtpoolrr_sbs_cap(Gtpoolrr *pool);
+
+// Get job pointers that can then be filled in with data and submitted
+int gtpoolrr_sbs_get(
+    Gtpoolrr *thread_pool, struct gtpoolrr_job *jobs_dest[],
+    size_t *num_obtained, size_t num_requested
 );
 
-// Add many jobs to the thread_pool
-// When freshness is not 0 then each job added is allowed to run only if less than expiration milliseconds have passed
-// Some among the jobs added may start if they begin before expiration milliseconds have passed while while others die
-int gtpoolrr_jobs_addall(
-    Gtpoolrr *pool, size_t count, size_t *num_completed, uint64_t user_tag[],
-    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *args[], size_t expiration
+// Set user tag for a single job
+void gtpoolrr_sbs_set_tag(struct gtpoolrr_job *job, uint64_t user_tag);
+
+// Set function for a single job
+void gtpoolrr_sbs_set_function(
+    struct gtpoolrr_job *job, 
+    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*))
 );
 
-// Add job to every single thread
-// Fails with EBUSY if every thread does not have at least one free job space in its queue
-// Does not add any jobs until it is confirmed that all threads have at least one free job space in their queue
-int gtpoolrr_jobs_assign(
-    Gtpoolrr *pool, uint64_t user_tag,
-    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *arg, size_t expiration
+// Set arg for a single job
+void gtpoolrr_sbs_set_arg(struct gtpoolrr_job *job, void *arg);
+
+// Set expiration to (current time now in nanoseconds + nanoseconds_from_now) for a single job
+void gtpoolrr_sbs_set_expiration(struct gtpoolrr_job *job, uint64_t nanoseconds_from_now);
+
+// Set user tag for num_jobs_to_set_for jobs
+void gtpoolrr_sbs_set_tags(struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for, uint64_t user_tag);
+
+// Set functions for num_jobs_to_set_for jobs
+void gtpoolrr_sbs_set_functions(
+    struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for,
+    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*))
 );
 
-// Assign job directly to a specific worker thread using thread index
-int gtpoolrr_jobs_add_direct(
-    Gtpoolrr *pool, size_t thread_index, uint64_t user_tag,
-    void *(*function)(volatile Gtpoolrr*, volatile Greent *, volatile void*),
-    void *arg, uint64_t expiration
+// Set args for num_jobs_to_set_for jobs
+void gtpoolrr_sbs_set_args(struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for, void *arg);
+
+// Set expiration to (current time now in nanoseconds + nanoseconds_from_now) for num_jobs_to_set_for jobs
+void gtpoolrr_sbs_set_expirations(
+    struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for, uint64_t nanoseconds_from_now
 );
 
-// Assign jobs directly to a specific worker thread using thread index
-int gtpoolrr_jobs_addall_direct(
-    Gtpoolrr *pool, size_t thread_index, size_t count, size_t *num_completed, uint64_t user_tag[],
-    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *args[], size_t expiration
+// Add job to thread pool assigning to first available thread
+int gtpoolrr_sbs_push(Gtpoolrr *pool, struct gtpoolrr_job *job);
+
+// Add many jobs to thread pool assigning each to the first available thread
+int gtpoolrr_sbs_pushall( Gtpoolrr *pool, size_t *num_pushed, size_t num_to_push, struct gtpoolrr_job *jobs[]);
+
+// Add job to thread pool assigning to first available thread
+int gtpoolrr_sbs_push_rr(Gtpoolrr *pool, struct gtpoolrr_job *job);
+
+// Add many jobs to thread pool assigning each to the first available thread
+int gtpoolrr_sbs_pushall_rr(Gtpoolrr *pool, size_t *num_pushed, size_t num_to_push, struct gtpoolrr_job *jobs[]);
+
+// Add job for the thread specified by thread_index in the thread pool
+int gtpoolrr_sbs_push_direct(Gtpoolrr *pool, size_t thread_index, struct gtpoolrr_job *job);
+
+// Add many jobs for the thread specified by thread_index in the thread pool
+int gtpoolrr_sbs_pushall_direct(
+    Gtpoolrr *pool, size_t thread_index, size_t *num_pushed, size_t num_to_push,
+    struct gtpoolrr_job *jobs[]
 );
 
-// Use round robin scheduling to try to distribute jobs across different threads
-int gtpoolrr_jobs_add_rr(
-    Gtpoolrr *pool, uint64_t user_tag,
-    void *(*function)(volatile Gtpoolrr*, volatile Greent *, volatile void*),
-    void *arg, uint64_t expiration
-);
+// Get number of completion events resulting from completed jobs for the thread pool
+// This is by its nature an O(N) operation
+size_t gtpoolrr_cps_queued(Gtpoolrr *pool);
 
-// Use round robin scheduling to try to distribute jobs across different threads
-int gtpoolrr_jobs_addall_rr(
-    Gtpoolrr *pool, size_t count, size_t *num_completed, uint64_t user_tag[],
-    void *((*functions[])(volatile Gtpoolrr*, volatile Greent*, volatile void*)),
-    void *args[], size_t expiration
-);
+// Get number of completion events that can still be accepted from completed jobs for the thread pool
+// This is by its nature an O(N) operation
+size_t gtpoolrr_cps_empty(Gtpoolrr *pool);
+
+// Get number of completion events that the thread pool can accept assuming no completion events are queued
+// This is by its nature an O(N) operation
+size_t gtpoolrr_cps_cap(Gtpoolrr *pool);
 
 // Get one completed job back
 // Returns EBUSY if no submitted jobs
-int gtpoolrr_completions_pop(Gtpoolrr *pool, struct gtpoolrr_job *dest);
+int gtpoolrr_cps_pop(Gtpoolrr *pool, struct gtpoolrr_job **dest);
 
 // Get at most at_most completed jobs back
 // Returns EBUSY if not able to meet at_most
 // actual number obtained placed in num_popped
-int gtpoolrr_completions_popsome(Gtpoolrr *pool, struct gtpoolrr_job dest[], size_t at_most, size_t *num_popped);
+int gtpoolrr_cps_popsome(Gtpoolrr *pool, struct gtpoolrr_job *dest[], size_t *num_popped, size_t at_most);
 
 // Block until getting wait_for completed job back
-int gtpoolrr_completions_popall(Gtpoolrr *pool, struct gtpoolrr_job dest[], size_t wait_for);
+int gtpoolrr_cps_popall(Gtpoolrr *pool, struct gtpoolrr_job *dest[], size_t wait_for);
 
-// Get number of submitted jobs the thread pool has in its current backlog
-// This is by its nature an O(N) operation
-size_t gtpoolrr_submissions_queued(Gtpoolrr *pool);
-
-// Get number of submitted jobs the thread pool can accept with its current backlog
-// This is by its nature an O(N) operation
-size_t gtpoolrr_submissions_empty(Gtpoolrr *pool);
-
-// Get number of submitted jobs the thread pool can accept assuming no jobs are currently queued
-// This is by its nature an O(N) operation
-size_t gtpoolrr_submissions_cap(Gtpoolrr *pool);
-
-// Get number of completion events resulting from completed jobs for the thread pool
-// This is by its nature an O(N) operation
-size_t gtpoolrr_completions_queued(Gtpoolrr *pool);
-
-// Get number of completion events that can still be accepted from completed jobs for the thread pool
-// This is by its nature an O(N) operation
-size_t gtpoolrr_completions_empty(Gtpoolrr *pool);
-
-// Get number of completion events that the thread pool can accept assuming no completion events are queued
-// This is by its nature an O(N) operation
-size_t gtpoolrr_completions_cap(Gtpoolrr *pool);
+// Acknowledge several jobs
+// These jobs should have been returned by completions_pop after submitting them
+void gtpoolrr_cps_ack(Gtpoolrr *thread_pool, struct gtpoolrr_job *done_jobs[], size_t num_acknowledged);

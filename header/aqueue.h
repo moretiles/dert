@@ -64,6 +64,14 @@ int aqueue_enqueue(Aqueue *queue, void *src);
 // Dequeues front element of queue into dest.
 int aqueue_dequeue(Aqueue *queue, void *dest);
 
+// Try to enqueue several elements
+// The amount that were able to be enqueued is stored in num_enqueued
+int aqueue_enqueue_some(Aqueue *queue, size_t *num_enqueued, size_t enqueue_this_many, void *src);
+
+// Try to dequeue several elements
+// The amount that were able to be dequeued is stored in num_dequeued
+int aqueue_dequeue_some(Aqueue *queue, size_t *num_dequeued, size_t dequeue_this_many, void *dest);
+
 // Gets the contents of the front of the queue.
 int aqueue_front(Aqueue *queue, void *dest);
 
