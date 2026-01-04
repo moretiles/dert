@@ -6,30 +6,30 @@ namespace {
 TEST(vstack, init) {
     Vstack *stack;
     stack = vstack_create(sizeof(long), 3);
-    assert(stack != NULL);
-    assert(vstack_len(stack) == 0);
-    assert(vstack_cap(stack) == 3);
+    ASSERT_NE(nullptr, stack);
+    ASSERT_EQ(0, vstack_len(stack));
+    ASSERT_EQ(3, vstack_cap(stack));
 
     long a = 1, b = 2, c = 3;
-    assert(vstack_push(stack, &a) == 0);
-    assert(vstack_push(stack, &b) == 0);
-    assert(vstack_push(stack, &c) == 0);
-    assert(vstack_len(stack) == 3);
-    assert(vstack_cap(stack) == 3);
+    ASSERT_EQ(0, vstack_push(stack, &a));
+    ASSERT_EQ(0, vstack_push(stack, &b));
+    ASSERT_EQ(0, vstack_push(stack, &c));
+    ASSERT_EQ(3, vstack_len(stack));
+    ASSERT_EQ(3, vstack_cap(stack));
 
     long a_test, b_test, c_test;
-    assert(vstack_top(stack, &c_test) == 0);
-    assert(c_test == c);
-    assert(vstack_pop(stack, &c_test) == 0);
-    assert(vstack_pop(stack, &b_test) == 0);
-    assert(vstack_pop(stack, &a_test) == 0);
-    assert(a_test == a);
-    assert(b_test == b);
-    assert(c_test == c);
+    ASSERT_EQ(0, vstack_top(stack, &c_test));
+    ASSERT_EQ(c, c_test);
+    ASSERT_EQ(0, vstack_pop(stack, &c_test));
+    ASSERT_EQ(0, vstack_pop(stack, &b_test));
+    ASSERT_EQ(0, vstack_pop(stack, &a_test));
+    ASSERT_EQ(a, a_test);
+    ASSERT_EQ(b, b_test);
+    ASSERT_EQ(c, c_test);
 
-    assert(vstack_len(stack) == 0);
-    assert(vstack_cap(stack) == 3);
-    assert(vstack_destroy(stack) == 0);
+    ASSERT_EQ(0, vstack_len(stack));
+    ASSERT_EQ(3, vstack_cap(stack));
+    ASSERT_EQ(0, vstack_destroy(stack));
 }
 
 TEST(vstack, initv) {
@@ -39,23 +39,23 @@ TEST(vstack, initv) {
     long a, b, c, a_test, b_test, c_test;
 
     memory = calloc(1, vstack_advisev(VSTACK_TEST_NUM_STACKS, sizeof(long), 3));
-    assert(memory != NULL);
-    assert(vstack_initv(VSTACK_TEST_NUM_STACKS, &stacks, memory, sizeof(long), 3) == 0);
+    ASSERT_NE(nullptr, memory);
+    ASSERT_EQ(0, vstack_initv(VSTACK_TEST_NUM_STACKS, &stacks, memory, sizeof(long), 3));
 
     for(size_t i = 0; i < VSTACK_TEST_NUM_STACKS; i++) {
         a = rand();
-        assert(vstack_push(&(stacks[i]), &a) == 0);
+        ASSERT_EQ(0, vstack_push(&(stacks[i]), &a));
         b = rand();
-        assert(vstack_push(&(stacks[i]), &b) == 0);
+        ASSERT_EQ(0, vstack_push(&(stacks[i]), &b));
         c = rand();
-        assert(vstack_push(&(stacks[i]), &c) == 0);
+        ASSERT_EQ(0, vstack_push(&(stacks[i]), &c));
 
-        assert(vstack_pop(&(stacks[i]), &c_test) == 0);
-        assert(c == c_test);
-        assert(vstack_pop(&(stacks[i]), &b_test) == 0);
-        assert(b == b_test);
-        assert(vstack_pop(&(stacks[i]), &a_test) == 0);
-        assert(a == a_test);
+        ASSERT_EQ(0, vstack_pop(&(stacks[i]), &c_test));
+        ASSERT_EQ(c_test, c);
+        ASSERT_EQ(0, vstack_pop(&(stacks[i]), &b_test));
+        ASSERT_EQ(b_test, b);
+        ASSERT_EQ(0, vstack_pop(&(stacks[i]), &a_test));
+        ASSERT_EQ(a_test, a);
     }
 
     for(size_t i = 0; i < VSTACK_TEST_NUM_STACKS; i++) {

@@ -1,8 +1,8 @@
 namespace {
 TEST(vht, simple) {
     Vht *table = vht_create(sizeof(long), sizeof(char));
-    assert(table != NULL);
-    assert(vht_len(table) == 0);
+    ASSERT_NE(nullptr, table);
+    ASSERT_EQ(0, vht_len(table));
 
 #define TEST_VHT_ARRAY_LEN (257)
     long keys[TEST_VHT_ARRAY_LEN];
@@ -13,16 +13,16 @@ TEST(vht, simple) {
         keys[i] = rand();
         vals[i] = rand();
     }
-    assert(vht_get_direct(table, &(keys[0])) == NULL);
+    ASSERT_EQ(nullptr, vht_get_direct(table, &(keys[0])));
 
     for(i = 0; i < TEST_VHT_ARRAY_LEN; i++) {
-        assert(vht_set(table, &(keys[i]), &(vals[i])) == 0);
+        ASSERT_EQ(0, vht_set(table, &(keys[i]), &(vals[i])));
     }
-    assert(vht_len(table) == TEST_VHT_ARRAY_LEN);
+    ASSERT_EQ(TEST_VHT_ARRAY_LEN, vht_len(table));
 
     for(i = 0; i < TEST_VHT_ARRAY_LEN; i++) {
-        assert(vht_get(table, &(keys[i]), &(ptrs[i])) == 0);
-        assert(ptrs[i] == vals[i]);
+        ASSERT_EQ(0, vht_get(table, &(keys[i]), &(ptrs[i])));
+        ASSERT_EQ(ptrs[i], vals[i]);
     }
 
     int64_t vals_sum = 0;
@@ -36,13 +36,13 @@ TEST(vht, simple) {
         vals_sum += vals[i];
     }
 
-    assert(vht_iterate_start(table, &iterator) == 0);
+    ASSERT_EQ(0, vht_iterate_start(table, &iterator));
     while((res = vht_iterate_next(table, &iterator, &dest_key, &dest_val)) != ENODATA) {
-        assert(res == 0);
+        ASSERT_EQ(0, res);
 
         vht_sum += dest_val;
     }
-    assert(vals_sum == vht_sum);
+    ASSERT_EQ(vals_sum, vht_sum);
 
     vht_destroy(table);
 }

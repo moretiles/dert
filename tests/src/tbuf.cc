@@ -12,44 +12,41 @@ TEST(tbuf, init) {
 
     char *a, *b;
     Tbuf *twin = tbuf_create(TBUF_TEST_BUF_SIZE);
-    assert(tbuf_cap(twin) == TBUF_TEST_BUF_SIZE);
+    ASSERT_NE(nullptr, twin);
+    ASSERT_EQ(TBUF_TEST_BUF_SIZE, tbuf_cap(twin));
 
-    assert(twin != NULL);
-    assert(tbuf_cap(twin) == TBUF_TEST_BUF_SIZE);
     a = twin->A;
     b = twin->B;
-    assert(a != NULL);
-    assert(b != NULL);
-    assert(strcpy(a, TBUF_TEST_STR_A) != NULL);
+    ASSERT_NE(nullptr, a);
+    ASSERT_NE(nullptr, b);
+    ASSERT_NE(nullptr, strcpy(a, TBUF_TEST_STR_A));
     twin->A_len += strlen(TBUF_TEST_STR_A) + 1;
     twin->B_len += strlen(TBUF_TEST_STR_B) + 1;
-    assert(strcpy(b, TBUF_TEST_STR_B) != NULL);
-    assert(tbuf_A_unused(twin) == TBUF_TEST_BUF_SIZE - strlen(TBUF_TEST_STR_A) - 1);
-    assert(tbuf_B_unused(twin) == TBUF_TEST_BUF_SIZE - strlen(TBUF_TEST_STR_B) - 1);
-    assert(!strcmp(a, TBUF_TEST_STR_A));
-    assert(!strcmp(b, TBUF_TEST_STR_B));
+    ASSERT_NE(nullptr, strcpy(b, TBUF_TEST_STR_B));
+    ASSERT_EQ(tbuf_A_unused(twin), TBUF_TEST_BUF_SIZE - strlen(TBUF_TEST_STR_A) - 1);
+    ASSERT_EQ(tbuf_B_unused(twin), TBUF_TEST_BUF_SIZE - strlen(TBUF_TEST_STR_B) - 1);
+    ASSERT_STREQ(a, TBUF_TEST_STR_A);
+    ASSERT_STREQ(b, TBUF_TEST_STR_B);
 
-    assert(tbuf_swap(twin) == 0);
+    ASSERT_EQ(0, tbuf_swap(twin));
     a = twin->A;
     b = twin->B;
-    assert(a != NULL);
-    assert(b != NULL);
-    assert(!strcmp(a, TBUF_TEST_STR_B));
-    assert(!strcmp(b, TBUF_TEST_STR_A));
+    ASSERT_NE(nullptr, a);
+    ASSERT_NE(nullptr, b);
+    ASSERT_STREQ(a, TBUF_TEST_STR_B);
+    ASSERT_STREQ(b, TBUF_TEST_STR_A);
 
     a = twin->A;
     b = twin->B;
-    assert(a != NULL);
-    assert(b != NULL);
-    assert(!strcmp(a, TBUF_TEST_STR_B));
-    assert(!strcmp(b, TBUF_TEST_STR_A));
-    assert(tbuf_swap(twin) == 0);
+    ASSERT_NE(nullptr, a);
+    ASSERT_NE(nullptr, b);
+    ASSERT_STREQ(a, TBUF_TEST_STR_B);
+    ASSERT_STREQ(b, TBUF_TEST_STR_A);
+    ASSERT_EQ(0, tbuf_swap(twin));
     a = twin->A;
     b = twin->B;
-    assert(a != NULL);
-    assert(b != NULL);
-    assert(!strcmp(a, TBUF_TEST_STR_A));
-    assert(!strcmp(b, TBUF_TEST_STR_B));
+    ASSERT_NE(nullptr, a);
+    ASSERT_NE(nullptr, b);
 
     tbuf_destroy(twin);
 }
@@ -59,21 +56,21 @@ TEST(tbuf, initv) {
 #define TBUF_TEST_NUM_TWINS (10)
     Tbuf *twins;
     void *memory = calloc(1, tbuf_advisev(TBUF_TEST_NUM_TWINS, TBUF_TEST_BUF_SIZE));
-    assert(memory != NULL);
-    assert(tbuf_initv(TBUF_TEST_NUM_TWINS, &twins, memory, TBUF_TEST_BUF_SIZE) == 0);
+    ASSERT_NE(nullptr, memory);
+    ASSERT_EQ(0, tbuf_initv(TBUF_TEST_NUM_TWINS, &twins, memory, TBUF_TEST_BUF_SIZE));
 
     for(size_t i = 0; i < TBUF_TEST_NUM_TWINS; i++) {
         a = tbuf_A(&(twins[i]));
         b = tbuf_B(&(twins[i]));
-        assert(getrandom(a, 16, 0) == 16);
-        assert(getrandom(b, 16, 0) == 16);
+        ASSERT_EQ(16, getrandom(a, 16, 0));
+        ASSERT_EQ(16, getrandom(b, 16, 0));
         A = a;
         B = b;
-        assert(tbuf_swap(&(twins[i])) == 0);
+        ASSERT_EQ(0, tbuf_swap(&(twins[i])));
         a = tbuf_A(&(twins[i]));
         b = tbuf_B(&(twins[i]));
-        assert(!strcmp(a, B));
-        assert(!strcmp(b, A));
+        ASSERT_STREQ(a, B);
+        ASSERT_STREQ(b, A);
         tbuf_deinit(&(twins[i]));
     }
     free(&(twins[0]));

@@ -9,14 +9,13 @@ struct fsemaphore_test_function_arg {
 #define FSEMAPHORE_SEM_MAX (10)
 void *fsemaphore_test_function(void *varg) {
     struct fsemaphore_test_function_arg *arg;
-    assert(varg != NULL);
     arg = (struct fsemaphore_test_function_arg *) varg;
 
-    assert(fsemaphore_wait(arg->sem) == 0);
+    fsemaphore_wait(arg->sem);
     __atomic_fetch_add(&(arg->array[arg->index % FSEMAPHORE_SEM_MAX]), arg->index, __ATOMIC_ACQ_REL);
     usleep(100);
     if(arg->do_post) {
-        assert(fsemaphore_post(arg->sem) == 0);
+        fsemaphore_post(arg->sem);
     }
 
     return NULL;
@@ -31,7 +30,7 @@ TEST(fsemaphore, simple) {
     // worker threads call fsemaphore_post
     {
         Fsemaphore *sem = fsemaphore_create(1, 1);
-        assert(sem != NULL);
+        ASSERT_NE(nullptr, sem);
 
         memset(array, 0, 3 * FSEMAPHORE_SEM_MAX * sizeof(int));
         for(int i = 0; i < 3 * FSEMAPHORE_SEM_MAX; i++) {
@@ -47,7 +46,7 @@ TEST(fsemaphore, simple) {
         }
 
         for(int i = 0; i < FSEMAPHORE_SEM_MAX; i++) {
-            assert(array[i] == (3 * (i + FSEMAPHORE_SEM_MAX)));
+            ASSERT_EQ(array[i], (3 * (i + FSEMAPHORE_SEM_MAX)));
         }
 
         fsemaphore_destroy(sem);
@@ -56,7 +55,7 @@ TEST(fsemaphore, simple) {
     // main thread calls fsemaphore_reset
     {
         Fsemaphore *sem = fsemaphore_create(1, 1);
-        assert(sem != NULL);
+        ASSERT_NE(nullptr, sem);
 
         memset(array, 0, 3 * FSEMAPHORE_SEM_MAX * sizeof(int));
         for(int i = 0; i < 3 * FSEMAPHORE_SEM_MAX; i++) {
@@ -78,7 +77,7 @@ TEST(fsemaphore, simple) {
         }
 
         for(int i = 0; i < FSEMAPHORE_SEM_MAX; i++) {
-            assert(array[i] == (3 * (i + FSEMAPHORE_SEM_MAX)));
+            ASSERT_EQ(array[i], (3 * (i + FSEMAPHORE_SEM_MAX)));
         }
 
         fsemaphore_destroy(sem);

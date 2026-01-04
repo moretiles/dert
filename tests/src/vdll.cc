@@ -29,30 +29,30 @@ TEST(vdll, test) {
     functions.deinit = deinit_long;
 #define TEST_VDLL_ARRAY_LEN (99)
     Vdll *dll = vdll_create(sizeof(long), &functions);
-    assert(dll != NULL);
-    assert(vdll_grow(dll, TEST_VDLL_ARRAY_LEN) == 0);
+    ASSERT_NE(nullptr, dll);
+    ASSERT_EQ(0, vdll_grow(dll, TEST_VDLL_ARRAY_LEN));
 
     long array[TEST_VDLL_ARRAY_LEN];
     long tmp;
     for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN; i++) {
         array[i] = rand();
-        assert(vdll_set(dll, i, &(array[i])) == 0);
+        ASSERT_EQ(0, vdll_set(dll, i, &(array[i])));
     }
 
     for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 10; i++) {
         size_t pos = rand() % TEST_VDLL_ARRAY_LEN;
         array[pos] = rand();
-        assert(vdll_set(dll, pos, &(array[pos])) == 0);
+        ASSERT_EQ(0, vdll_set(dll, pos, &(array[pos])));
     }
 
     for(size_t i = 0; i < TEST_VDLL_ARRAY_LEN * 100; i++) {
         size_t pos = rand() % TEST_VDLL_ARRAY_LEN;
-        assert(vdll_get(dll, pos, &tmp) == 0);
-        assert(tmp == array[pos]);
+        ASSERT_EQ(0, vdll_get(dll, pos, &tmp));
+        ASSERT_EQ(tmp, array[pos]);
     }
 
-    assert(vdll_len(dll) == TEST_VDLL_ARRAY_LEN);
-    assert(vdll_shrink(dll, 1 + (TEST_VDLL_ARRAY_LEN / 2)) == 0);
+    ASSERT_EQ(TEST_VDLL_ARRAY_LEN, vdll_len(dll));
+    ASSERT_EQ(0, vdll_shrink(dll, 1 + (TEST_VDLL_ARRAY_LEN / 2)));
     vdll_destroy(dll);
 }
 }

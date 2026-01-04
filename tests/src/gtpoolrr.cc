@@ -178,19 +178,19 @@ TEST(gtpoolrr, 1) {
     size_t num_obtained;
     Gtpoolrr *pool1;
     pool1 = gtpoolrr_create(1,1);
-    assert(pool1 != NULL);
-    assert(gtpoolrr_pause(pool1) == 0);
-    assert(gtpoolrr_resume(pool1) == 0);
-    assert(0 == gtpoolrr_sbs_get(pool1, jobs, &num_obtained, 1));
+    ASSERT_NE(nullptr, pool1);
+    ASSERT_EQ(0, gtpoolrr_pause(pool1));
+    ASSERT_EQ(0, gtpoolrr_resume(pool1));
+    ASSERT_EQ(0, gtpoolrr_sbs_get(pool1, jobs, &num_obtained, 1));
     gtpoolrr_sbs_set_tag(jobs[0], 8080);
     gtpoolrr_sbs_set_function(jobs[0], gtpoolrr_test1);
     struct gtpoolrr_test_arg1 arg = { 55 };
     gtpoolrr_sbs_set_arg(jobs[0], &arg);
     //gtpoolrr_sbs_set_expiration(jobs[0], 0);
-    assert(gtpoolrr_sbs_push_direct(pool1, 0, jobs[0]) == 0);
+    ASSERT_EQ(0, gtpoolrr_sbs_push_direct(pool1, 0, jobs[0]));
 
     gtpoolrr_join(pool1);
-    assert(gtpoolrr_cps_popall(pool1, jobs, 1) == 0);
+    ASSERT_EQ(0, gtpoolrr_cps_popall(pool1, jobs, 1));
     gtpoolrr_cps_ack(pool1, &(jobs[0]), 1);
     gtpoolrr_destroy(pool1);
 }
@@ -199,7 +199,7 @@ TEST(gtpoolrr, 2) {
     Gtpoolrr *pool2;
     size_t num_pushed;
     pool2 = gtpoolrr_create(2,2);
-    assert(pool2 != NULL);
+    ASSERT_NE(nullptr, pool2);
 
     char bufs[2][256];
     const char *filenames[2] = { "./tests/DIR.txt", "./obj/dir.txt"};
@@ -208,18 +208,18 @@ TEST(gtpoolrr, 2) {
     args[1] = { bufs[1], filenames[1] };
 
     struct gtpoolrr_job *jobs[10] = { 0 };
-    assert(0 == gtpoolrr_sbs_get(pool2, jobs, &num_pushed, 2));
+    ASSERT_EQ(0, gtpoolrr_sbs_get(pool2, jobs, &num_pushed, 2));
     gtpoolrr_sbs_set_tag(jobs[0], 111);
     gtpoolrr_sbs_set_tag(jobs[1], 222);
     gtpoolrr_sbs_set_functions(jobs, 2, gtpoolrr_test2);
     gtpoolrr_sbs_set_arg(jobs[0], &(args[0]));
     gtpoolrr_sbs_set_arg(jobs[1], &(args[1]));
     gtpoolrr_sbs_set_expirations(jobs, 2, 10 * (1LLU << 30)); // about 10 seconds
-    //assert(gtpoolrr_sbs_pushall(pool2, &num_pushed, 2, jobs) == 0);
-    assert(gtpoolrr_sbs_push_direct(pool2, 0, jobs[0]) == 0);
-    assert(gtpoolrr_sbs_push_direct(pool2, 1, jobs[1]) == 0);
+    //ASSERT_EQ(0, gtpoolrr_sbs_pushall(pool2, &num_pushed, 2, jobs));
+    ASSERT_EQ(0, gtpoolrr_sbs_push_direct(pool2, 0, jobs[0]));
+    ASSERT_EQ(0, gtpoolrr_sbs_push_direct(pool2, 1, jobs[1]));
 
-    assert(gtpoolrr_cps_popall(pool2, jobs, 2) == 0);
+    ASSERT_EQ(0, gtpoolrr_cps_popall(pool2, jobs, 2));
     gtpoolrr_cps_ack(pool2, &(jobs[0]), 2);
     gtpoolrr_destroy(pool2);
 }
@@ -228,7 +228,7 @@ TEST(gtpoolrr, 3) {
     Gtpoolrr *pool3;
     size_t num_pushed;
     pool3 = gtpoolrr_create(1,3);
-    assert(pool3 != NULL);
+    ASSERT_NE(pool3, nullptr);
     char bufs[3][256];
     const char *in_filenames[3] = {
         "tests/gtpoolrr/readtwritet_reference.txt",
@@ -245,7 +245,7 @@ TEST(gtpoolrr, 3) {
     struct gtpoolrr_test_arg3 arg2 = { bufs[2], in_filenames[2], out_filenames[2] };
 
     struct gtpoolrr_job *jobs[3] = { 0 };
-    assert(gtpoolrr_sbs_get(pool3, jobs, &num_pushed, 3) == 0);
+    ASSERT_EQ(0, gtpoolrr_sbs_get(pool3, jobs, &num_pushed, 3));
     gtpoolrr_sbs_set_tag(jobs[0], 1 * 1111);
     gtpoolrr_sbs_set_tag(jobs[1], 2 * 1111);
     gtpoolrr_sbs_set_tag(jobs[2], 3 * 1111);
@@ -254,11 +254,11 @@ TEST(gtpoolrr, 3) {
     gtpoolrr_sbs_set_arg(jobs[1], &arg1);
     gtpoolrr_sbs_set_arg(jobs[2], &arg2);
 
-    assert(gtpoolrr_sbs_pushall_direct(pool3, 0, &num_pushed, 3, jobs) == 0);
-    //assert(gtpoolrr_sbs_push_direct(pool3, 0, jobs[0]) == 0);
-    //assert(gtpoolrr_sbs_push_direct(pool3, 1, jobs[0]) == 0);
-    //assert(gtpoolrr_sbs_push_direct(pool3, 2, jobs[0]) == 0);
-    assert(gtpoolrr_cps_popall(pool3, jobs, 3) == 0);
+    ASSERT_EQ(0, gtpoolrr_sbs_pushall_direct(pool3, 0, &num_pushed, 3, jobs));
+    //ASSERT_EQ(0, gtpoolrr_sbs_push_direct(pool3, 0, jobs[0]));
+    //ASSERT_EQ(0, gtpoolrr_sbs_push_direct(pool3, 1, jobs[0]));
+    //ASSERT_EQ(0, gtpoolrr_sbs_push_direct(pool3, 2, jobs[0]));
+    ASSERT_EQ(0, gtpoolrr_cps_popall(pool3, jobs, 3));
     gtpoolrr_join(pool3);
     gtpoolrr_destroy(pool3);
 }
