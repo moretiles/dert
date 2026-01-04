@@ -13,6 +13,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Node inside tree
 typedef struct tree_node {
     // value being stored
@@ -142,3 +146,7 @@ int tree_harvest(struct tree_tree *tree, struct tree_node **dest);
 
 // Delete node from tree and put back into the pool of unused nodes
 void tree_reap(struct tree_tree *tree, struct tree_node *node);
+
+#ifdef __cplusplus
+}
+#endif

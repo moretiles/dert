@@ -6,6 +6,10 @@
 // std
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //vslab has many regions
 //region has many subregions
 
@@ -89,3 +93,7 @@ int vslab_region_create(Vslab *slab, size_t region_identifier, size_t alloc_size
 
 // Destroy region that allocates memory each alloc_size bytes in length
 int vslab_region_destroy(Vslab *slab, size_t region_identifier);
+
+#ifdef __cplusplus
+}
+#endif

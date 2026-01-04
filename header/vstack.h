@@ -11,6 +11,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct vstack {
     // elements that are on the stack placed here
     void *elems;
@@ -77,3 +81,7 @@ size_t vstack_len(Vstack *stack);
  * Calculated as number of elements the stack was told to allocate when creating/initializing.
  */
 size_t vstack_cap(Vstack *stack);
+
+#ifdef __cplusplus
+}
+#endif

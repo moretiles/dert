@@ -10,5 +10,13 @@
 
 #include <stdlib.h>
 
-	char *cstrncpy(char *restrict dest, const char *restrict src, size_t m);
-	void *cmemcpy(void *restrict dest, const void *restrict src, size_t count);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+char *cstrncpy(char *restrict dest, const char *restrict src, size_t m);
+void *cmemcpy(void *restrict dest, const void *restrict src, size_t count);
+
+#ifdef __cplusplus
+}
+#endif

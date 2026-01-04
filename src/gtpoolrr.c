@@ -4,6 +4,7 @@
 // needed for pthread_timedjoin_np
 #define _GNU_SOURCE 1
 
+#include <tld.h>
 #include <gtpoolrr.h>
 #include <gtpoolrr_priv.h>
 #include <vpool.h>
@@ -48,7 +49,7 @@ struct gtpoolrr_worker_desired_and_current_state {
 
 struct gtpoolrr_job *gtpoolrr_job_run(
     Gtpoolrr *volatile thread_pool, volatile size_t thread_index, Greent *volatile green_thread,
-    struct gtpoolrr_job *volatile job, void *volatile flags
+    struct gtpoolrr_job *volatile job, volatile uint64_t flags
 ) {
     if(job == NULL) {
         return NULL;
@@ -92,7 +93,7 @@ void *gtpoolrr_worker(void *void_arg) {
     Gtpoolrr *volatile const pool = arg->pool;
     const volatile size_t index = arg->index;
     Vpool *volatile const green_threads = pointer_literal_addition(pool->green_threads, index * vpool_advise(pool->jobs_per_thread, greent_advise()));
-    Vqueue *volatile const ready_threads = pointer_literal_addition(pool->ready_threads, index * vqueue_advise(pool->jobs_per_thread, sizeof(Greent*)));
+    Vqueue *volatile const ready_threads = &(pool->ready_threads[index]);
     Aqueue *volatile const submission_queue = &(pool->job_submission_queues[index]);
     Aqueue *volatile const completion_queue = &(pool->job_completion_queues[index]);
     _Atomic enum gtpoolrr_thread_state *volatile const desired_state = &(pool->desired_states[index]);
@@ -122,7 +123,7 @@ void *gtpoolrr_worker(void *void_arg) {
             bool cqe_for_timeout, something, something_else;
             res = greent_unpack(cqe->user_data, &waiting_thread, &cqe_for_timeout, &something, &something_else);
             assert(res == 0);
-            printf("%lu = Received CQE for operation %lu\n", waiting_thread->unique_id, waiting_thread->submission.do_this);
+            MT_LOG("%lu = Received CQE for operation %lu", waiting_thread->unique_id, waiting_thread->submission.do_this);
             if(cqe_for_timeout) {
                 // do nothing for timeouts
                 // the primary operation (read, write, etc.) will return with its own response
@@ -131,7 +132,8 @@ void *gtpoolrr_worker(void *void_arg) {
                 waiting_thread->completion.res = cqe->res;
                 waiting_thread->completion.flags = cqe->flags;
 
-                if(vqueue_enqueue((Vqueue *) ready_threads, &waiting_thread, false) != 0) {
+                res = vqueue_enqueue((Vqueue *) ready_threads, &waiting_thread, false);
+                if(res != 0) {
                     assert(false);
                 }
             }
@@ -142,7 +144,6 @@ void *gtpoolrr_worker(void *void_arg) {
             io_uring_cq_advance(&ring, i);
         }
 
-        // inlining the use of desired state because of some problems with _Atomic volatile enums
         switch(*desired_state) {
         case GTPOOLRR_THREAD_STATE_ACTIVE:
             *current_state = GTPOOLRR_THREAD_STATE_ACTIVE;
@@ -175,7 +176,6 @@ void *gtpoolrr_worker(void *void_arg) {
             break;
         }
 
-        // Think about dealing with expiration
         if(running_thread == NULL) {
             res = vqueue_dequeue((Vqueue *) ready_threads, (void *) &running_thread);
             if(res != 0 && res != ENODATA) {
@@ -185,19 +185,28 @@ void *gtpoolrr_worker(void *void_arg) {
 
         if(running_thread != NULL) {
             greent_resume(running_thread, 0);
-        } else {
-            //printf("thread: %lu has aqueue with length of %lu!\n", index, aqueue_len((Aqueue *) submission_queue));
-            if(aqueue_len((Aqueue *) submission_queue) == 0) {
-                // temporary way of pausing
-                usleep(1000);
-                continue;
-            }
-            res = aqueue_dequeue((Aqueue *) submission_queue, &job);
-            if(res != 0) {
-                printf("Failed to dequeue!\n");
-                // maybe log???;
-            }
-            printf("Got job %lu:%lu\n", index, (size_t) job->user_tag);
+
+            // should never be reached
+            // the instruction pointer should always be adjusted so that another green thread runs
+            __builtin_unreachable();
+        }
+
+        //MT_LOG("thread: %lu has aqueue with length of %lu!", index, aqueue_len((Aqueue *) submission_queue));
+
+        if(aqueue_len((Aqueue *) submission_queue) == 0) {
+            // temporary way of pausing
+            usleep(1000);
+            continue;
+        }
+        res = aqueue_dequeue((Aqueue *) submission_queue, &job);
+        if(res != 0) {
+            fprintf(stderr, "Failed to dequeue!\n");
+            // maybe log???;
+        }
+
+        bool job_has_no_expiration = (job->expiration == 0);
+        if(job_has_no_expiration || job->expiration > gt_monotonic_time_now()) {
+            MT_LOG("Got job %lu:%lu", index, (size_t) job->user_tag);
             job->thread_assigned_to = index;
             job->flags = 0;
 
@@ -209,30 +218,29 @@ void *gtpoolrr_worker(void *void_arg) {
                 running_thread->unique_id = counter++;
             }
 
-            //job->function(pool, running_thread, job->arg);
             gtpoolrr_job_run(pool, index, running_thread, job, 0);
             running_thread = NULL;
+        } else {
+            job->flags = 0 | GTPOOLRR_CPS_FLAG_TIMEOUT;
         }
 
-        printf("Completed job %lu:%lu\n", index, (size_t) job->user_tag);
+        MT_LOG("Completed job %lu:%lu", index, (size_t) job->user_tag);
         res = aqueue_enqueue((Aqueue *) completion_queue, &job);
         if(res != 0) {
-            printf("Failed to enqueue!\n");
-            // maybe log???;
+            assert(false);
         }
     }
 
     // free io_uring
+    io_uring_queue_exit(&ring);
 
-    // stack frames no longer used for functions so scan store stuff
     pthread_key_t destructor_key;
-    struct gtpoolrr_worker_desired_and_current_state *destructor_arg = (void*) pool->green_threads;
+    struct gtpoolrr_worker_desired_and_current_state *destructor_arg = (void*) ready_threads;
     destructor_arg->desired_state = desired_state;
     destructor_arg->current_state = current_state;
     pthread_key_create(&destructor_key, gtpoolrr_worker_destructor_current);
     pthread_setspecific(destructor_key, destructor_arg);
 
-    printf("returning from thread\n");
     return NULL;
 }
 
@@ -292,11 +300,11 @@ int gtpoolrr_init(Gtpoolrr **dest, void *memory, size_t thread_count, size_t job
         pool->threads = ptr;
         ptr = pointer_literal_addition(ptr, thread_count * sizeof(pthread_t));
         pool->green_threads = ptr;
-        ptr = pointer_literal_addition(ptr, thread_count * vpool_advise(jobs_per_thread, greent_advise()));
+        ptr = pointer_literal_addition(ptr, (thread_count * vpool_advise(jobs_per_thread, greent_advise())));
         pool->jobs = ptr;
         ptr = pointer_literal_addition(ptr, vpool_advise(thread_count * jobs_per_thread, sizeof(struct gtpoolrr_job)));
         pool->ready_threads = ptr;
-        ptr = pointer_literal_addition(ptr, vqueue_advise(thread_count * jobs_per_thread, sizeof(Greent*)));
+        ptr = pointer_literal_addition(ptr, (1 * vqueue_advisev(thread_count, jobs_per_thread, sizeof(Greent *))));
         pool->worker_args = ptr;
         ptr = pointer_literal_addition(ptr, thread_count * sizeof(struct gtpoolrr_worker_arg));
         pool->job_submission_queues = ptr;
@@ -419,9 +427,9 @@ int gtpoolrr_sbs_pushall_rr(Gtpoolrr *pool, size_t *num_pushed, size_t num_to_pu
     }
 
     *num_pushed = 0;
-    for(size_t i = 0; i < num_to_push; i++){
+    for(size_t i = 0; i < num_to_push; i++) {
         res = gtpoolrr_sbs_push_rr(pool, jobs[i]);
-        if(res != 0){
+        if(res != 0) {
             return res;
         }
 
@@ -454,9 +462,9 @@ int gtpoolrr_sbs_pushall_direct(
     }
 
     *num_pushed = 0;
-    for(size_t i = 0; i < num_to_push; i++){
+    for(size_t i = 0; i < num_to_push; i++) {
         res = gtpoolrr_sbs_push_direct(pool, thread_index, jobs[i]);
-        if(res != 0){
+        if(res != 0) {
             return res;
         }
 
@@ -566,7 +574,7 @@ int gtpoolrr_join(Gtpoolrr *pool) {
     return 0;
 }
 
-int gtpoolrr_handler_update(Gtpoolrr *pool, void *((*function)(volatile struct gtpoolrr*, volatile Greent*, volatile void*))) {
+int gtpoolrr_handler_update(Gtpoolrr *pool, void *((*function)(struct gtpoolrr *volatile, Greent *volatile, void *volatile))) {
     if(pool == NULL || function == NULL) {
         return EINVAL;
     }
@@ -582,7 +590,7 @@ int gtpoolrr_handler_call(Gtpoolrr *pool, Greent *green_thread, void *arg, void 
     }
 
     *retval = pool->handler_function(
-                  (volatile Gtpoolrr*) pool, (volatile Greent*) green_thread, (volatile void*) arg
+                  pool, green_thread, arg
               );
 
     return 0;
@@ -602,7 +610,7 @@ int gtpoolrr_sbs_get(
     for(size_t i = 0; i < num_requested; i++) {
         job = vpool_alloc(thread_pool->jobs);
         memset(job, 0, sizeof(struct gtpoolrr_job));
-        if(job == NULL){
+        if(job == NULL) {
             return ENODATA;
         }
 
@@ -619,7 +627,7 @@ void gtpoolrr_cps_ack(Gtpoolrr *thread_pool, struct gtpoolrr_job *done_jobs[], s
     }
 
     for(size_t i = 0; i < num_acknowledged; i++) {
-        if(vpool_dealloc(thread_pool->jobs, done_jobs[i]) != 0){
+        if(vpool_dealloc(thread_pool->jobs, done_jobs[i]) != 0) {
             assert(false);
         }
     }
@@ -638,7 +646,7 @@ void gtpoolrr_sbs_set_tag(struct gtpoolrr_job *job, uint64_t user_tag) {
 
 void gtpoolrr_sbs_set_function(
     struct gtpoolrr_job *job,
-    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*))
+    void *((*function)(Gtpoolrr *volatile, Greent *volatile, void *volatile))
 ) {
     if(job == NULL) {
         return;
@@ -679,7 +687,7 @@ void gtpoolrr_sbs_set_tags(struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_f
 
 void gtpoolrr_sbs_set_functions(
     struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for,
-    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*))
+    void *((*function)(Gtpoolrr *volatile, Greent *volatile, void *volatile))
 ) {
     if(jobs == NULL || num_jobs_to_set_for == 0) {
         return;

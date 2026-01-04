@@ -1,0 +1,42 @@
+#include <gtest/gtest.h>
+
+#include <assert.h>
+#include <sys/random.h>
+
+#include <tld.h>
+#include <greent.h>
+#include <gtpoolrr.h>
+#include <aqueue.h>
+#include <mpscqueue.h>
+#include <tbuf.h>
+#include <tpoolrr.h>
+#include <varena.h>
+#include <varray.h>
+#include <vdll.h>
+#include <vpool.h>
+#include <vqueue.h>
+#include <vstack.h>
+#include <vht.h>
+#include <fqueue.h>
+#include <fmutex.h>
+#include <fsemaphore.h>
+#include <tree_T.h>
+#include <tree_iterator.h>
+#include <pointerarith.h>
+
+#include <aqueue.cc>
+#include <gtpoolrr.cc>
+#include <mpscqueue.cc>
+#include <tbuf.cc>
+#include <tpoolrr.cc>
+#include <varena.cc>
+#include <varray.cc>
+#include <vdll.cc>
+#include <vpool.cc>
+#include <vqueue.cc>
+#include <vstack.cc>
+#include <fqueue.cc>
+#include <fmutex.cc>
+#include <fsemaphore.cc>
+#include <tree_T.cc>
+#include <vht.cc>

@@ -212,9 +212,12 @@ int vpool_guided_extend(Vpool *pool, void *memory, size_t memory_size) {
     if(_vpool_init((Vpool**) &memory, memory, num_items, pool->element_size, VPOOL_KIND_GUIDED, memory) != 0) {
         return EINVAL;
     }
+    void *next_free = pool->next_free;
+    pool->next_free = NULL;
     memcpy(&tmp, pool, sizeof(Vpool));
     memcpy(pool, memory, sizeof(Vpool));
     memcpy(memory, &tmp, sizeof(Vpool));
+    pool->next_free = next_free;
 
     return 0;
 }

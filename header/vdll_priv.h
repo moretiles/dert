@@ -11,6 +11,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct vdll_node {
     void *data;
     struct vdll_node *prev;
@@ -48,3 +52,7 @@ int vdll_rewind(Vdll *dll, size_t increment);
 
 // Control whether to insert before or after
 int _vdll_insert(Vdll *dll, size_t pos, size_t num_elems, bool after);
+
+#ifdef __cplusplus
+}
+#endif

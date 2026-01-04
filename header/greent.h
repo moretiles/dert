@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <liburing.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define GREENT_DO_NOP (0)
 #define GREENT_DO_IOURING_READ (1)
 #define GREENT_DO_IOURING_WRITE (2)
@@ -134,35 +138,36 @@ int greent_unpack(
 );
 
 // Give cpu time to other green threads while asynchronous operations are performed
-uint64_t greent_do_nop(volatile Greent *green_thread);
+uint64_t greent_do_nop(Greent *volatile green_thread);
 // Mirrors Linux read system call
 uint64_t greent_do_read(
-    volatile Greent *green_thread,
-    volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset
+    Greent *volatile green_thread,
+    volatile int fd, void *volatile buf, volatile unsigned nbyes, volatile uint64_t offset
 );
 // Mirrors Linux write system call
 uint64_t greent_do_write(
-    volatile Greent *green_thread,
-    volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset
+    Greent *volatile green_thread,
+    volatile int fd, void *volatile buf, volatile unsigned nbyes, volatile uint64_t offset
 );
 // Mirrors Linux open system call
 uint64_t greent_do_open(
-    volatile Greent *green_thread,
-    volatile char *path, volatile int flags, volatile mode_t mode
+    Greent *volatile green_thread,
+    const char *volatile path, volatile int flags, volatile mode_t mode
 );
 // Mirrors Linux close system call
-uint64_t greent_do_close(volatile Greent *green_thread, volatile int fd);
+uint64_t greent_do_close(Greent *volatile green_thread, volatile int fd);
 
 // Mirrors Linux read system call with added timeout
 uint64_t greent_do_readt(
-    volatile Greent *green_thread,
-    volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset,
+    Greent *volatile green_thread,
+    volatile int fd, void *volatile buf, volatile unsigned nbyes, volatile uint64_t offset,
     __kernel_time64_t tv_sec, long long tv_nsec
 );
+
 // Mirrors Linux write system call with added timeout
 uint64_t greent_do_writet(
-    volatile Greent *green_thread,
-    volatile int fd, volatile void *buf, volatile unsigned nbyes, volatile uint64_t offset,
+    Greent *volatile green_thread,
+    volatile int fd, void *volatile buf, volatile unsigned nbyes, volatile uint64_t offset,
     __kernel_time64_t tv_sec, long long tv_nsec
 );
 
@@ -178,4 +183,12 @@ extern __attribute__((__naked__, noinline))
 uint64_t greent_yield(volatile Greent *buf);
 // Needs to be assembly in order to set registers
 extern __attribute__((__naked__, indirect_return, noinline))
+#ifdef __cplusplus
+[[noreturn]] void greent_resume(volatile Greent *buf, volatile uint64_t retval);
+#else
 _Noreturn void greent_resume(volatile Greent *buf, volatile uint64_t retval);
+#endif
+
+#ifdef __cplusplus
+}
+#endif

@@ -110,7 +110,7 @@ int greent_unpack(
     return 0;
 }
 
-uint64_t greent_do_nop(volatile Greent *green_thread) {
+uint64_t greent_do_nop(Greent *volatile green_thread) {
     if(green_thread == NULL) {
         return EINVAL;
     }
@@ -125,8 +125,8 @@ uint64_t greent_do_nop(volatile Greent *green_thread) {
 }
 
 uint64_t greent_do_read(
-    volatile Greent *green_thread,
-    volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset
+    Greent *volatile green_thread,
+    volatile int fd, void *volatile buf, volatile unsigned nbytes, volatile uint64_t offset
 ) {
     if(green_thread == NULL) {
         return EINVAL;
@@ -146,8 +146,8 @@ uint64_t greent_do_read(
 }
 
 uint64_t greent_do_write(
-    volatile Greent *green_thread,
-    volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset
+    Greent *volatile green_thread,
+    volatile int fd, void *volatile buf, volatile unsigned nbytes, volatile uint64_t offset
 ) {
     if(green_thread == NULL) {
         return EINVAL;
@@ -167,8 +167,8 @@ uint64_t greent_do_write(
 }
 
 uint64_t greent_do_open(
-    volatile Greent *green_thread,
-    volatile char *path, volatile int flags, volatile mode_t mode
+    Greent *volatile green_thread,
+    const char *volatile path, volatile int flags, volatile mode_t mode
 ) {
     if(green_thread == NULL) {
         return EINVAL;
@@ -189,7 +189,7 @@ uint64_t greent_do_open(
     return greent_yield(green_thread);
 }
 
-uint64_t greent_do_close(volatile Greent *green_thread, volatile int fd) {
+uint64_t greent_do_close(Greent *volatile green_thread, volatile int fd) {
     if(green_thread == NULL) {
         return EINVAL;
     }
@@ -205,8 +205,8 @@ uint64_t greent_do_close(volatile Greent *green_thread, volatile int fd) {
 }
 
 uint64_t greent_do_readt(
-    volatile Greent *green_thread,
-    volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset,
+    Greent *volatile green_thread,
+    volatile int fd, void *volatile buf, volatile unsigned nbytes, volatile uint64_t offset,
     __kernel_time64_t tv_sec, long long tv_nsec
 ) {
     if(green_thread == NULL) {
@@ -234,8 +234,8 @@ uint64_t greent_do_readt(
 }
 
 uint64_t greent_do_writet(
-    volatile Greent *green_thread,
-    volatile int fd, volatile void *buf, volatile unsigned nbytes, volatile uint64_t offset,
+    Greent *volatile green_thread,
+    volatile int fd, void *volatile buf, volatile unsigned nbytes, volatile uint64_t offset,
     __kernel_time64_t tv_sec, long long tv_nsec
 ) {
     if(green_thread == NULL) {

@@ -11,6 +11,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // All structs that are typedefined are public.
 
 /*
@@ -84,3 +88,7 @@ int varena_disclaim(Varena **arena_ptr);
  * Non-null pointer returned on success.
  */
 void *varena_alloc(Varena **arena_ptr, size_t num_bytes);
+
+#ifdef __cplusplus
+}
+#endif

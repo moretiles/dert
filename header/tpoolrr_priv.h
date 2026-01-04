@@ -19,6 +19,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // The type used as an argument to tpoolrr_worker
 struct tpoolrr_worker_arg {
     Tpoolrr *pool;
@@ -40,3 +44,7 @@ struct tpoolrr_worker_arg tpoolrr_worker_arg_construct(Tpoolrr *pool, size_t ind
 void *tpoolrr_worker(void *void_arg);
 
 int _tpoolrr_jobs_add(Tpoolrr *pool, struct tpoolrr_job job);
+
+#ifdef __cplusplus
+}
+#endif

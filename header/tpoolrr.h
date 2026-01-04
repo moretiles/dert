@@ -19,11 +19,14 @@
 
 #pragma once
 
-#include <aqueue.h>
-
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <pthread.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #ifndef TPOOLRR_LET_UNRECOVERABLE_ERRORS_FAIL_SILENTLY
 #define TPOOLRR_LET_UNRECOVERABLE_ERRORS_FAIL_SILENTLY (0)
@@ -83,10 +86,10 @@ typedef struct tpoolrr {
     struct tpoolrr_worker_arg *worker_args;
 
     // Submission queues, one for each thread
-    Aqueue *job_submission_queues;
+    struct aqueue *job_submission_queues;
 
     // Completion queues, one for each thread
-    Aqueue *job_completion_queues;
+    struct aqueue *job_completion_queues;
 
     // The desired state that the associated thread should be in
     // Should only be accessed when the condition mutex is accquired
@@ -123,18 +126,14 @@ struct tpoolrr_job {
     uint64_t user_tag;
 
     // used during submission
-    struct {
-        void *((*function)(Tpoolrr*,void*));
-        void *arg;
-        uint64_t expiration;
-    };
+    void *((*function)(Tpoolrr*,void*));
+    void *arg;
+    uint64_t expiration;
 
     // used during completion
-    struct {
-        size_t thread_assigned_to;
-        void *ret;
-        void *flags;
-    };
+    size_t thread_assigned_to;
+    void *ret;
+    void *flags;
 };
 
 typedef void *((*Tpoolrr_fn) (Tpoolrr *, void *));
@@ -252,3 +251,7 @@ size_t tpoolrr_threads_inactive(Tpoolrr *pool);
 
 // Get number of threads in pool
 size_t tpoolrr_threads_total(Tpoolrr *pool);
+
+#ifdef __cplusplus
+}
+#endif

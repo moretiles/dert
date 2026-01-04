@@ -6,6 +6,10 @@
 // std
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Set system_page_size or die
 void vslab_system_page_size_set_or_die(void);
 
@@ -26,3 +30,7 @@ void *_vslab_region_alloc(Vslab *slab, Vslab_region *region);
 
 // Free memory located in this region
 int _vslab_region_free(Vslab *slab, Vslab_region *region);
+
+#ifdef __cplusplus
+}
+#endif

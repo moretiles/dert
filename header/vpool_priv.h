@@ -13,8 +13,16 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Exists as an abstraction to hide some details from end-user
 Vpool *_vpool_create(size_t num_items, size_t elem_size, Vpool_kind kind, Vpool *prev);
 
 // Exists as an abstraction to hide some details from end-user
 int _vpool_init(Vpool **dest, void *memory, size_t num_items, size_t elem_size, Vpool_kind kind, Vpool *prev);
+
+#ifdef __cplusplus
+}
+#endif

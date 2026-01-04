@@ -20,20 +20,21 @@ __attribute__((const)) size_t mt_tld_dumb_hash(const char *str) {
     }
 
     while(str[i] != 0) {
-        result <<= 1;
-        result += str[i++];
+        size_t old_result = result;
+        size_t new_result = (result << 1) + str[i++];
+        result = old_result ^ new_result;
         result %= (1 << 15);
     }
 
     return result;
 }
 
-void mt_tld_dumb_hash_underscore_string(char *str) {
+void mt_tld_dumb_hash_hyphen_string(char *str) {
     char local_buf[99] = { 0 };
     size_t num_bytes;
     assert(str != NULL);
 
-    char *substr = strchr(str, '_');
+    char *substr = strchr(str, '-');
     while(substr != NULL) {
         num_bytes = (substr - str);
         if(num_bytes > (99 - 1)) {
@@ -47,7 +48,7 @@ void mt_tld_dumb_hash_underscore_string(char *str) {
         }
 
         str = substr + 1;
-        substr = strchr(str, '_');
+        substr = strchr(str, '-');
     }
     mt_tld_dumb[mt_tld_dumb_hash(str)] = 1;
 }
@@ -81,7 +82,7 @@ __attribute__((pure)) bool mt_tld_dumb_hash_concat_check(int ignore_me, ...) {
         if(cap_remaining == 0) {
             break;
         }
-        buf[pos++] = '-';
+        buf[pos++] = '_';
         cap_remaining--;
 
         str = va_arg(vl, char*);
@@ -104,6 +105,6 @@ int mt_tld_trace_left_scope(const void *volatile *str) {
 
 #ifdef MT_TLD
 __attribute__((constructor)) void mt_tld_constructor_set_dumb_hash_table(void) {
-    mt_tld_dumb_hash_underscore_string(mt_tld_use_expanded_macro_as_string(MT_TLD));
+    mt_tld_dumb_hash_hyphen_string(mt_tld_use_expanded_macro_as_string(MT_TLD));
 }
 #endif
