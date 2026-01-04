@@ -10,5 +10,13 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Used to wrap calculations involving front and back
 size_t aqueue_wrap(Aqueue *queue, size_t pos);
+
+#ifdef __cplusplus
+}
+#endif

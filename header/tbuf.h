@@ -11,6 +11,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Twin buffer
 typedef struct tbuf {
     // A buffer
@@ -70,3 +74,7 @@ size_t tbuf_B_unused(Tbuf *twin);
 
 // Returns the total number of chars that can be stored in either A or B
 size_t tbuf_cap(Tbuf *twin);
+
+#ifdef __cplusplus
+}
+#endif

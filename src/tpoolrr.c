@@ -4,12 +4,13 @@
 // needed for pthread_timedjoin_np
 #define _GNU_SOURCE 1
 
+#include <tld.h>
 #include <tpoolrr.h>
 #include <tpoolrr_priv.h>
 #include <aqueue.h>
 #include <pointerarith.h>
-#include <stdlib.h>
 
+#include <stdlib.h>
 #include <stddef.h>
 #include <pthread.h>
 #include <assert.h>
@@ -370,9 +371,9 @@ void *tpoolrr_worker(void *void_arg) {
     condition_lock = &(pool->condition_mutexes[index]);
     while(true) {
 tpoolrr_worker_loop:
-        //printf("%lu: trying to lock mutex!\n", index);
+        MT_LOG("%lu: trying to lock mutex!", index);
         pthread_mutex_lock(condition_lock);
-        //printf("%lu: desired states is %i\n", index, (int) *desired_state);
+        MT_LOG("%lu: desired states is %i", index, (int) *desired_state);
         if(*desired_state == TPOOLRR_THREAD_STATE_ACTIVE) {
             // keep running jobs if they are available
 
@@ -383,10 +384,10 @@ tpoolrr_worker_loop:
             } else {
                 // we want to let other threads run if this thread has no jobs
                 *current_state = TPOOLRR_THREAD_STATE_PAUSED;
-                //printf("%lu: waiting...\n", index);
+                MT_LOG("%lu: waiting...", index);
                 pthread_cond_wait(condition, condition_lock);
                 pthread_mutex_unlock(condition_lock);
-                //printf("%lu: awake\n", index);
+                MT_LOG("%lu: awake", index);
 
                 // need to handle new desired state so go back to beginning of loop
                 goto tpoolrr_worker_loop;
@@ -431,9 +432,9 @@ tpoolrr_worker_loop:
 
         // get next job
         res = aqueue_dequeue(submission_queue, &job);
-        printf("Got job %lu:%lu\n", index, (size_t) job.user_tag);
+        MT_LOG("Got job %lu:%lu", index, (size_t) job.user_tag);
         if(res != 0) {
-            printf("Failed to dequeue!\n");
+            fprintf(stderr, "Failed to dequeue!\n");
             // maybe log???;
         }
         job.thread_assigned_to = index;
@@ -456,15 +457,15 @@ tpoolrr_worker_loop:
             job.flags = (void *) 1;
         }
 
-        printf("Completed job %lu:%lu\n", index, (size_t) job.user_tag);
+        MT_LOG("Completed job %lu:%lu", index, (size_t) job.user_tag);
         res = aqueue_enqueue(completion_queue, &job);
         if(res != 0) {
-            printf("Failed to enqueue!\n");
+            fprintf(stderr, "Failed to enqueue!\n");
             // maybe log???;
         }
     }
 
-    printf("returning from thread\n");
+    MT_LOG("returning from thread");
     return NULL;
 }
 

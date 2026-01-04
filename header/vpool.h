@@ -13,6 +13,10 @@
 #include <stddef.h>
 #include <pthread.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Controls how to handle when the pool is out of memory
 typedef enum vpool_kind {
     // Total amount of memory allocated for items cannot change unless deinit/destroy called
@@ -89,3 +93,7 @@ bool vpool_full(Vpool *pool);
 // Allows you to extend a Vpool of kind VPOOL_KIND_GUIDED when at capacity (vpool_full returns true)
 // Memory is not kept track of and freed later when added using this method
 int vpool_guided_extend(Vpool *pool, void *memory, size_t memory_size);
+
+#ifdef __cplusplus
+}
+#endif

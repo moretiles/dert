@@ -28,6 +28,13 @@
 #include <stdint.h>
 #include <pthread.h>
 
+#ifdef __cplusplus
+// std::atomic needed to express _Atomic type as std::atomic<type>
+#include <atomic>
+
+extern "C" {
+#endif
+
 #ifndef GTPOOLRR_LET_UNRECOVERABLE_ERRORS_FAIL_SILENTLY
 #define GTPOOLRR_LET_UNRECOVERABLE_ERRORS_FAIL_SILENTLY (0)
 #else
@@ -37,6 +44,8 @@
 #define PTHREAD_MUTEX_LOCK_UNLOCK_DESTROY_ATTEMPTS (10)
 #define PTHREAD_COND_WAIT_SIGNAL_DESTROY_ATTEMPTS (10)
 #define PTHREAD_CREATE_JOIN_ATTEMPTS (10)
+
+#define GTPOOLRR_CPS_FLAG_TIMEOUT (1 << 0)
 
 // ACTIVE state means the thread should perform assigned jobs and expect new jobs
 // PAUSED state means the thread should pause until a signal is sent to the condtion variable
@@ -80,14 +89,22 @@ typedef struct gtpoolrr {
 
     // The desired state that the associated thread should be in
     // Applies to threads themselves, not green threads
+#ifdef __cplusplus
+    std::atomic<enum gtpoolrr_thread_state> *desired_states;
+#else
     _Atomic enum gtpoolrr_thread_state *desired_states;
+#endif
 
     // The current state the thread has set
     // Applies to threads themselves, not green threads
+#ifdef __cplusplus
+    std::atomic<enum gtpoolrr_thread_state> *current_states;
+#else
     _Atomic enum gtpoolrr_thread_state *current_states;
+#endif
 
     // Handler function that worker thread jobs can call to supervise
-    void *((*handler_function)(volatile struct gtpoolrr *pool, volatile Greent *thread, volatile void *arg));
+    void *((*handler_function)(struct gtpoolrr *volatile pool, Greent *volatile thread, void *volatile arg));
 
     // Index used to control the next thread a job should be pushed to
     size_t rr_index;
@@ -106,22 +123,18 @@ struct gtpoolrr_job {
     // cosmetic
     uint64_t user_tag;
 
-        // used during submission
-        struct {
-            void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*));
-            void *arg;
-            uint64_t expiration;
-        };
+    // used during submission
+    void *((*function)(struct gtpoolrr *volatile pool, Greent *volatile thread, void *volatile arg));
+    void *arg;
+    uint64_t expiration;
 
-        // used during completion
-        struct {
-            size_t thread_assigned_to;
-            void *ret;
-            void *flags;
-        };
+    // used during completion
+    size_t thread_assigned_to;
+    void *ret;
+    uint64_t flags;
 };
 
-typedef void *((*Gtpoolrr_fn) (volatile Gtpoolrr *, volatile Greent *, volatile void *));
+typedef void *((*Gtpoolrr_fn) (struct gtpoolrr *volatile pool, Greent *volatile thread, void *volatile arg));
 
 // Creates a thread pool with thread_count threads in which each thread can have jobs_per_thread max pending jobs
 Gtpoolrr *gtpoolrr_create(size_t thread_count, size_t jobs_per_thread);
@@ -165,7 +178,7 @@ int gtpoolrr_join(Gtpoolrr *pool);
 
 // Update handler associated with pool
 // By default no handler is used
-int gtpoolrr_handler_update(Gtpoolrr *pool, void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*)));
+int gtpoolrr_handler_update(Gtpoolrr *pool, void *((*function)(struct gtpoolrr *volatile, Greent *volatile, void *volatile)));
 
 // Call handler associated with pool
 // By default no handler is used
@@ -195,7 +208,7 @@ void gtpoolrr_sbs_set_tag(struct gtpoolrr_job *job, uint64_t user_tag);
 // Set function for a single job
 void gtpoolrr_sbs_set_function(
     struct gtpoolrr_job *job, 
-    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*))
+    void *((*function)(Gtpoolrr *volatile pool, Greent *volatile thread, void *volatile varg))
 );
 
 // Set arg for a single job
@@ -210,7 +223,7 @@ void gtpoolrr_sbs_set_tags(struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_f
 // Set functions for num_jobs_to_set_for jobs
 void gtpoolrr_sbs_set_functions(
     struct gtpoolrr_job *jobs[], size_t num_jobs_to_set_for,
-    void *((*function)(volatile Gtpoolrr*, volatile Greent*, volatile void*))
+    void *((*function)(Gtpoolrr *volatile pool, Greent *volatile thread, void *volatile varg))
 );
 
 // Set args for num_jobs_to_set_for jobs
@@ -269,3 +282,7 @@ int gtpoolrr_cps_popall(Gtpoolrr *pool, struct gtpoolrr_job *dest[], size_t wait
 // Acknowledge several jobs
 // These jobs should have been returned by completions_pop after submitting them
 void gtpoolrr_cps_ack(Gtpoolrr *thread_pool, struct gtpoolrr_job *done_jobs[], size_t num_acknowledged);
+
+#ifdef __cplusplus
+}
+#endif

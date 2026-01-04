@@ -12,6 +12,10 @@
 #include <string.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define ERR_QUEUE_INVALID_SIZE (1)
 #define ERR_QUEUE_NULL (2)
 #define ERR_QUEUE_CANNOT_READ_QUANTITY (3)
@@ -105,3 +109,7 @@ int fqueue_exchange(Fqueue *readQueue, Fqueue *writeQueue, size_t size);
 
 // Copy from store->bytes over [readCursor, writeCursor) to start of store->bytes
 int fqueue_fold_down(Fqueue *store);
+
+#ifdef __cplusplus
+}
+#endif

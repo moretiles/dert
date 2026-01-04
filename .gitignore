@@ -33,6 +33,8 @@ gmon.out
 
 # tests
 test
+test_asan
+test_tsan
 *_out.txt
 *.dot
 *.jpeg

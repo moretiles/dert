@@ -10,6 +10,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * User defined functions for allocating and deallocating individual elements
  */
@@ -77,3 +81,7 @@ int vdll_grow(Vdll *dll, size_t num_elems);
 
 // Remove the num_elems last elements from dll.
 int vdll_shrink(Vdll *dll, size_t num_elems);
+
+#ifdef __cplusplus
+}
+#endif

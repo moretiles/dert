@@ -13,10 +13,21 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+// std::atomic needed to express _Atomic type as std::atomic<type>
+#include <atomic>
+
+extern "C" {
+#endif
+
 typedef struct fmutex {
     // Linux FUTEX syscall requires a uint32_t*
     // So, use this uint32_t as a boolean
+#ifdef __cplusplus
+    std::atomic<uint32_t> locked;
+#else
     _Atomic uint32_t locked;
+#endif
 } Fmutex;
 
 // Allocates memory for and create
@@ -53,3 +64,7 @@ int fmutex_lock(Fmutex *mutex);
 // unlock mutex
 // fails if mutex is already unlocked
 int fmutex_unlock(Fmutex *mutex);
+
+#ifdef __cplusplus
+}
+#endif

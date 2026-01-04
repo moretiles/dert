@@ -12,6 +12,14 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdatomic.h>
+
+#ifdef __cplusplus
+// std::atomic needed to express _Atomic type as std::atomic<type>
+#include <atomic>
+
+extern "C" {
+#endif
 
 typedef struct aqueue {
     // elements that are in the queue placed here
@@ -27,7 +35,11 @@ typedef struct aqueue {
     size_t back;
 
     // need to have distinct length field because back may be less than front
+#ifdef __cplusplus
+    std::atomic<size_t> len;
+#else
     _Atomic size_t len;
+#endif
 
     // total number of elements this queue can store, if empty
     size_t cap;
@@ -94,3 +106,7 @@ size_t aqueue_len(Aqueue *queue);
  * Calculated as number of elements the queue was told to allocate when creating/initializing.
  */
 size_t aqueue_cap(Aqueue *queue);
+
+#ifdef __cplusplus
+}
+#endif

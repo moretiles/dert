@@ -215,7 +215,7 @@ Tree_node *tree_iterator_next(Tree_iterator *iterator) {
 #define TREE_PUTS_BUFFER_SIZE (999)
 int tree_puts(
     Tree_tree *tree, Tree_iterator *iterator,
-    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), char *filename
+    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), const char *filename
 ) {
     (void)filename;
 
@@ -338,7 +338,7 @@ tree_puts_end:
 
 int tree_puts_pre(
     Tree_tree *tree,
-    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), char *filename
+    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), const char *filename
 ) {
     Tree_iterator *iterator;
     int ret = 0;
@@ -359,7 +359,7 @@ int tree_puts_pre(
 
 int tree_puts_in(
     Tree_tree *tree,
-    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), char *filename
+    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), const char *filename
 ) {
     Tree_iterator *iterator;
     int ret = 0;
@@ -380,7 +380,7 @@ int tree_puts_in(
 
 int tree_puts_post(
     Tree_tree *tree,
-    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), char *filename
+    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), const char *filename
 ) {
     Tree_iterator *iterator;
     int ret = 0;
@@ -401,7 +401,7 @@ int tree_puts_post(
 
 int tree_puts_bfs(
     Tree_tree *tree,
-    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), char *filename
+    int ((*stringify)(char *dest, Tree_node *src, size_t cap)), const char *filename
 ) {
     Tree_iterator *iterator;
     int ret = 0;

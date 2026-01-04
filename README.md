@@ -1,7 +1,8 @@
 # Do Everything RighT
 * A collection of data structures that align with what I think is reasonable.
 * This is a personal library so there may be breaking changes to APIs at **any** time.
-* Supports C11 or later
+* Using C11 with gnu extensions.
+* Do to some use of assembly with gnu macros currently only gcc is supported as a compiler.
 
 ## General purpose allocators
 * Arenas.

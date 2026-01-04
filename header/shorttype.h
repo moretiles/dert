@@ -12,6 +12,10 @@
 #include <stdbool.h>
 #include <uchar.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Shorten type names
 typedef int8_t i8;
 typedef int16_t i16;
@@ -48,3 +52,7 @@ typedef __uint128_t u128;
 typedef char c8;
 typedef char16_t c16;
 typedef char32_t c32;
+
+#ifdef __cplusplus
+}
+#endif

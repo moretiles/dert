@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Need to figure how to setup automatic templating for this
 #define VERT_R12_OFFSET (0)
 #define VERT_R13_OFFSET (8)
@@ -24,3 +28,7 @@
 #define GREENT_TOP_OF_FRAME_OFFSET (1088)
 #define GREENT_PARENT_OFFSET (1096)
 #define GREENT_FLAGS_OFFSET (1104)
+
+#ifdef __cplusplus
+}
+#endif

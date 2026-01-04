@@ -10,6 +10,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct varray {
     // elements that form the Varray
     void *elems;
@@ -63,3 +67,7 @@ size_t varray_len(Varray *array);
 
 // Provide the cap for number of elements that can currently be stored without resizing.
 size_t varray_cap(Varray *array);
+
+#ifdef __cplusplus
+}
+#endif

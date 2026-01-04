@@ -11,6 +11,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct vqueue {
     // elements that are in the queue placed here
     void *elems;
@@ -101,3 +105,7 @@ size_t vqueue_len(Vqueue *queue);
  * Calculated as number of elements the queue was told to allocate when creating/initializing.
  */
 size_t vqueue_cap(Vqueue *queue);
+
+#ifdef __cplusplus
+}
+#endif

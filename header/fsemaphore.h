@@ -15,9 +15,20 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+// std::atomic needed to express _Atomic type as std::atomic<type>
+#include <atomic>
+
+extern "C" {
+#endif
+
 typedef struct fsemaphore {
     Fmutex *mutex;
+#ifdef __cplusplus
+    std::atomic<uint64_t> counter;
+#else
     _Atomic uint64_t counter;
+#endif
     uint64_t max;
 } Fsemaphore;
 
@@ -59,3 +70,7 @@ int fsemaphore_post(Fsemaphore *sem);
 
 // Set count for sem to its max
 int fsemaphore_reset(Fsemaphore *sem);
+
+#ifdef __cplusplus
+}
+#endif

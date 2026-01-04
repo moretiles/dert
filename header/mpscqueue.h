@@ -12,7 +12,15 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <pthread.h>
+
+#ifdef __cplusplus
+// std::atomic needed to express _Atomic type as std::atomic<type>
+#include <atomic>
+
+extern "C" {
+#endif
 
 typedef struct mpscqueue {
     // elements that are in the queue placed here
@@ -28,7 +36,12 @@ typedef struct mpscqueue {
     size_t back;
 
     // need to have distinct length field because back may be less than front
+#ifdef __cplusplus
+    #include <atomic>
+    std::atomic<size_t> len;
+#else
     _Atomic size_t len;
+#endif
 
     // total number of elements this queue can store, if empty
     size_t cap;
@@ -80,3 +93,7 @@ size_t mpscqueue_len(Mpscqueue *queue);
  * Calculated as number of elements the queue was told to allocate when creating/initializing.
  */
 size_t mpscqueue_cap(Mpscqueue *queue);
+
+#ifdef __cplusplus
+}
+#endif

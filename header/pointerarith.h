@@ -10,6 +10,14 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void *pointer_literal_addition(void *ptr, size_t increment);
 
 void *array_nth(void *array_base, size_t index, size_t item_size);
+
+#ifdef __cplusplus
+}
+#endif

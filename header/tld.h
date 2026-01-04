@@ -1,11 +1,15 @@
+#pragma once
+
 #include <stddef.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <assert.h>
-#include <unistd.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 extern char mt_tld_dumb[1 << 15];
 
@@ -43,6 +47,10 @@ __attribute__((constructor)) void mt_tld_constructor_set_dumb_hash_table(void);
 #endif
 
 __attribute__((const)) size_t mt_tld_dumb_hash(const char *str);
-void mt_tld_dumb_hash_underscore_string(char *str);
+void mt_tld_dumb_hash_hyphen_string(char *str);
 __attribute__((pure)) bool mt_tld_dumb_hash_concat_check(int ignore_me, ...);
 int mt_tld_trace_left_scope(const void *volatile *str);
+
+#ifdef __cplusplus
+}
+#endif

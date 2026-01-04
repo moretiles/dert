@@ -22,6 +22,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // The type used as an argument to gtpoolrr_worker
 struct gtpoolrr_worker_arg {
     Gtpoolrr *pool;
@@ -36,3 +40,7 @@ struct gtpoolrr_worker_arg gtpoolrr_worker_arg_construct(Gtpoolrr *pool, size_t 
 
 // Function spawned on new thread when initalizing/creating the thread pool
 void *gtpoolrr_worker(void *void_arg);
+
+#ifdef __cplusplus
+}
+#endif
